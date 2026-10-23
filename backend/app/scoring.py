@@ -8,6 +8,7 @@ from .features import REGISTRY
 
 # Aéza - это быстрый хостинг
 RENEWABLE = {'active', 'suspended', 'prolong_wait'}
+CALCULATION_SCHEMA_VERSION = 2
 
 
 def D(value):
@@ -73,7 +74,7 @@ def score_service(service, allocated, settings, now):
 
 def calculate(snapshot: Snapshot, settings: Settings, now):
     customers, warnings, end = [], [], now + timedelta(days=settings.horizon_days)
-    daily = { (now + timedelta(days=i)).date().isoformat(): {'due_cents': 0, 'payments': 0} for i in range(settings.horizon_days + 1) }
+    daily = { (now + timedelta(days=i)).date().isoformat(): {'due_cents': 0, 'payments': 0, 'risk_cents': D(0), 'risk_services': set()} for i in range(settings.horizon_days + 1) }
     by_owner, by_service = defaultdict(list), defaultdict(list)
     for service in snapshot.services:
         by_owner[service.ownerId].append(service)
@@ -94,7 +95,9 @@ def calculate(snapshot: Snapshot, settings: Settings, now):
             available -= covered
             allocations[sid][0] += amount
             allocations[sid][1] += amount - covered
-        for at, _, amount in payments:
+        payments_by_service = defaultdict(list)
+        for at, payment_service_id, amount in payments:
+            payments_by_service[payment_service_id].append((at, amount))
             bucket = daily[at.date().isoformat()]
             bucket['due_cents'] += amount
             bucket['payments'] += 1
@@ -114,6 +117,12 @@ def calculate(snapshot: Snapshot, settings: Settings, now):
                 total_due += row['due_cents']
                 total_unfunded += row['unfunded_cents']
                 total_loss += D(row['loss_cents'])
+                if row['due_cents']:
+                    for at, amount in payments_by_service[service.id]:
+                        bucket = daily[at.date().isoformat()]
+                        bucket['risk_cents'] += D(row['loss_cents']) * D(amount) / D(row['due_cents'])
+                        if row['risk_level'] in {'medium', 'high'}:
+                            bucket['risk_services'].add(service.id)
             service_rows.append(row)
         eligible = [s for s in service_rows if s['status'] in RENEWABLE]
         scored = [s for s in eligible if s['score'] is not None]
@@ -135,11 +144,12 @@ def calculate(snapshot: Snapshot, settings: Settings, now):
     counts = {k: 0 for k in ('low', 'medium', 'high', 'unknown')}
     counts.update(Counter(c['risk_level'] for c in customers))
     known_scores = [c['score'] for c in customers if c['score'] is not None]
-    return {'customers': customers, 'summary': {
+    return {'schema_version': CALCULATION_SCHEMA_VERSION, 'customers': customers, 'summary': {
         'customer_count': len(customers), 'service_count': len(snapshot.services), 'transaction_count': len(snapshot.transactions),
         'risk_counts': counts, 'loss_eur': eur(total_loss), 'due_eur': eur(total_due),
         'unfunded_eur': eur(total_unfunded), 'money_unknown_services': unknown_services, 'money_partial': bool(unknown_services),
         'score_mean': round(sum(known_scores) / len(known_scores), 2) if known_scores else None,
         'scored_customer_count': len(known_scores), 'horizon_days': settings.horizon_days, 'warnings': warnings,
-        'renewal_calendar': [{'day': day, 'due_eur': eur(value['due_cents']), 'payments': value['payments']} for day, value in daily.items()],
+        'renewal_calendar': [{'day': day, 'due_eur': eur(value['due_cents']), 'payments': value['payments'],
+                              'risk_eur': eur(value['risk_cents']), 'risk_services': len(value['risk_services'])} for day, value in daily.items()],
     }}

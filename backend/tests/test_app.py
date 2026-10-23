@@ -175,6 +175,53 @@ def test_snapshot_repeat_rollback_and_counts(client, app, source):
     assert client.get('/api/v1/source/snapshot').json() == source
 
 
+def test_history_tracks_observed_deletion(client, source):
+    headers = sign_in(client)
+    service = next(item for item in source['services'] if item['status'] == 'active')
+    service['status'] = 'deleted'
+    assert client.put('/api/v1/source/snapshot', headers=headers, json=source).status_code == 200
+    history = client.get('/api/v1/analytics/history').json()['snapshots']
+    assert history[0]['deleted_count'] == 1
+    assert history[0]['transitions'][0]['service_id'] == service['id']
+    assert history[0]['transitions'][0]['to_status'] == 'deleted'
+    assert 'risk_eur' in client.get('/api/v1/analytics/summary').json()['renewal_calendar'][0]
+
+
+def test_scenario_does_not_publish_or_change_source(client, source):
+    headers = sign_in(client)
+    client.post('/api/v1/source/demo', headers=headers)
+    before = client.get('/api/v1/analytics/summary').json()['calculation_version']
+    original = client.get('/api/v1/source/snapshot').json()
+    response = client.post('/api/v1/customers/1006/simulate', headers=headers,
+                           json={'balance_cents': 100000, 'service_id': 1006, 'auto_prolong': True})
+    assert response.status_code == 200
+    result = response.json()
+    assert result['saved'] is False
+    assert result['after']['loss_eur'] <= result['before']['loss_eur']
+    assert client.get('/api/v1/analytics/summary').json()['calculation_version'] == before
+    assert client.get('/api/v1/source/snapshot').json() == original
+    assert client.post('/api/v1/customers/1006/simulate', headers=headers, json={}).status_code == 422
+
+
+def test_marketing_actions(client, source):
+    headers = sign_in(client)
+    assert client.get('/api/v1/actions').json()['items'] == []
+    response = client.put('/api/v1/actions/1', headers=headers, json={'status': 'open', 'note': ''})
+    assert response.status_code == 200
+    assert response.json()['customer']['id'] == 1
+    response = client.put('/api/v1/actions/1', headers=headers, json={'status': 'contacted', 'note': 'Связались'})
+    assert response.status_code == 200
+    assert client.get('/api/v1/actions').json()['items'][0]['note'] == 'Связались'
+    assert client.put('/api/v1/actions/999999', headers=headers, json={'status': 'open'}).status_code == 404
+    removed_services = {service['id'] for service in source['services'] if service['ownerId'] == 1}
+    source['accounts'] = [account for account in source['accounts'] if account['id'] != 1]
+    source['services'] = [service for service in source['services'] if service['id'] not in removed_services]
+    source['transactions'] = [transaction for transaction in source['transactions'] if transaction['serviceId'] not in removed_services]
+    assert client.put('/api/v1/source/snapshot', headers=headers, json=source).status_code == 200
+    assert client.put('/api/v1/actions/1', headers=headers, json={'status': 'resolved', 'note': 'Завершено'}).status_code == 200
+    assert client.get('/api/v1/actions').json()['items'][0]['customer'] is None
+
+
 def test_metrics_and_openapi(client):
     headers = sign_in(client)
     summary = client.get('/api/v1/analytics/summary').json()
@@ -213,8 +260,16 @@ def test_restart_keeps_settings_and_source(tmp_path):
         headers=sign_in(c)
         c.patch('/api/v1/model/settings',headers=headers,json={'horizon_days':10})
         c.post('/api/v1/source/demo',headers=headers)
+        old_version = c.get('/api/v1/analytics/summary').json()['calculation_version']
+    with a.state.store.engine.begin() as conn:
+        payload = dict(conn.execute(select(db.runs.c.payload).where(db.runs.c.id == old_version)).scalar_one())
+        payload.pop('schema_version')
+        conn.execute(db.runs.update().where(db.runs.c.id == old_version).values(payload=payload))
     b=create_app(url,str(DATA_PATH),'another-password-123',NOW,testing=True)
     with TestClient(b) as c:
         sign_in(c)  # Existing password is preserved, not overwritten by env.
         assert c.get('/api/v1/model/settings').json()['horizon_days']==10
-        assert c.get('/api/v1/analytics/summary').json()['customer_count']==16
+        summary = c.get('/api/v1/analytics/summary').json()
+        assert summary['customer_count']==16
+        assert summary['calculation_version'] > old_version
+        assert 'risk_eur' in summary['renewal_calendar'][0]

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   QueryClient,
@@ -38,6 +38,8 @@ import {
   Menu,
   Moon,
   Sun,
+  Monitor,
+  ClipboardList,
 } from "lucide-react";
 import { api, setCSRF, levels, money, date, Level } from "./api";
 import "./style.css";
@@ -54,34 +56,54 @@ const levelColors: Record<Level, string> = {
   low: "#43a887",
   unknown: "#a8adb7",
 };
-type View = "overview" | "customers" | "settings" | "source";
-type Theme = "light" | "dark";
+type View = "overview" | "customers" | "settings" | "source" | "actions";
+type Theme = "system" | "light" | "dark";
 
 function initialTheme(): Theme {
-  const saved = localStorage.getItem("aeza-theme");
+  const saved = localStorage.getItem("aeza-theme-preference");
   if (saved === "light" || saved === "dark") return saved;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return "system";
+}
+
+function nextTheme(theme: Theme, systemDark: boolean): Theme {
+  if (theme === "system") return systemDark ? "light" : "dark";
+  if (theme === (systemDark ? "light" : "dark")) return systemDark ? "dark" : "light";
+  return "system";
 }
 
 function ThemeToggle({
   theme,
+  systemDark,
   onToggle,
 }: {
   theme: Theme;
+  systemDark: boolean;
   onToggle: () => void;
 }) {
-  const dark = theme === "dark";
+  const upcomingTheme = nextTheme(theme, systemDark);
+  const label =
+    upcomingTheme === "system"
+      ? "Как в системе"
+      : upcomingTheme === "dark"
+        ? "Тёмная тема"
+        : "Светлая тема";
+  const currentLabel =
+    theme === "system" ? "как в системе" : theme === "dark" ? "тёмная" : "светлая";
   return (
     <button
       className="theme-toggle icon-btn"
       type="button"
       onClick={onToggle}
-      aria-label={dark ? "Включить светлую тему" : "Включить тёмную тему"}
-      title={dark ? "Светлая тема" : "Тёмная тема"}
+      aria-label={`Тема: ${currentLabel}. Переключить на: ${label.toLowerCase()}`}
+      title={`Тема: ${currentLabel}`}
     >
-      {dark ? <Sun size={18} /> : <Moon size={18} />}
+      {theme === "system" ? (
+        <Monitor size={18} />
+      ) : theme === "dark" ? (
+        <Moon size={18} />
+      ) : (
+        <Sun size={18} />
+      )}
     </button>
   );
 }
@@ -135,10 +157,12 @@ function Loading() {
 function LoginPage({
   onLogin,
   theme,
+  systemDark,
   onToggleTheme,
 }: {
   onLogin: (u: any) => void;
   theme: Theme;
+  systemDark: boolean;
   onToggleTheme: () => void;
 }) {
   const [login, setLogin] = useState("admin"),
@@ -184,13 +208,13 @@ function LoginPage({
             Решения, основанные на данных.
           </p>
           <span className="story-footer">
-            <Activity size={17} /> Aéza Retention · версия 0.1
+            <Activity size={17} /> Aéza Retention · версия 0.4
           </span>
         </div>
       </div>
       <div className="login-form-area">
         <div className="login-theme-toggle">
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <ThemeToggle theme={theme} systemDark={systemDark} onToggle={onToggleTheme} />
         </div>
         <form onSubmit={submit} className="login-form">
           <span className="square-icon">
@@ -244,11 +268,31 @@ function App() {
     [mobile, setMobile] = useState(false),
     [toast, setToast] = useState("");
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [focusScenario, setFocusScenario] = useState(false);
+  const [systemDark, setSystemDark] = useState(
+    () => window.matchMedia("(prefers-color-scheme: dark)").matches,
+  );
   const qc = useQueryClient();
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("aeza-theme", theme);
-  }, [theme]);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = (event: MediaQueryListEvent) => setSystemDark(event.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    const resolvedTheme =
+      theme === "system" ? (systemDark ? "dark" : "light") : theme;
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute(
+      "content",
+      resolvedTheme === "dark" ? "#141218" : "#f8f6f4",
+    );
+    if (theme === "system") localStorage.removeItem("aeza-theme-preference");
+    else localStorage.setItem("aeza-theme-preference", theme);
+  }, [theme, systemDark]);
+  function toggleTheme() {
+    setTheme((current) => nextTheme(current, systemDark));
+  }
   useEffect(() => {
     api("/auth/me")
       .then((u) => {
@@ -304,13 +348,35 @@ function App() {
     setView(v);
     setMobile(false);
   }
+  function openCustomer(id: number) {
+    setFocusScenario(false);
+    setCustomerId(id);
+  }
+  async function openScenario() {
+    try {
+      const customers = await api("/customers?sort_by=score&sort_order=desc&page_size=1");
+      if (!customers.items.length) {
+        setToast("В данных пока нет клиентов для расчёта сценария");
+        return;
+      }
+      setFocusScenario(true);
+      setCustomerId(customers.items[0].id);
+    } catch (error) {
+      setToast((error as Error).message);
+    }
+  }
+  function showForecast() {
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    document.getElementById("forecast-chart")?.scrollIntoView({ behavior });
+  }
   if (checking) return <Loading />;
   if (!user)
     return (
       <LoginPage
         onLogin={setUser}
         theme={theme}
-        onToggleTheme={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+        systemDark={systemDark}
+        onToggleTheme={toggleTheme}
       />
     );
   return (
@@ -329,18 +395,19 @@ function App() {
             <Activity size={18} />
           </span>
           <div>
-            Retention<span>Рабочее пространство</span>
+            Центр удержания<span>{summary.data?.risk_counts.high ?? "—"} клиентов с высоким риском</span>
           </div>
           <ChevronRight size={15} />
         </div>
         <span className="nav-label">АНАЛИТИКА</span>
-        <nav>
+        <nav className={`navigation navigation-${view}`}>
           {(
             [
               ["overview", LayoutDashboard, "Обзор рисков"],
               ["customers", Users, "Клиенты"],
               ["settings", SlidersHorizontal, "Модель риска"],
               ["source", Database, "Источники данных"],
+              ["actions", ClipboardList, "Работа с клиентами"],
             ] as const
           ).map(([id, Icon, label]) => (
             <button
@@ -399,6 +466,7 @@ function App() {
                   customers: "Клиенты",
                   settings: "Модель риска",
                   source: "Источники данных",
+                  actions: "Работа с клиентами",
                 }[view]
               }
             </strong>
@@ -416,14 +484,13 @@ function App() {
             <span className="topbar-divider" />
             <ThemeToggle
               theme={theme}
-              onToggle={() =>
-                setTheme((value) => (value === "dark" ? "light" : "dark"))
-              }
+              systemDark={systemDark}
+              onToggle={toggleTheme}
             />
             <span className="small-avatar">A</span>
           </div>
         </header>
-        <main className="main-content">
+        <main className="main-content" key={view}>
           {summary.isError && <ErrorBox message={summary.error.message} />}
           <div className="page-heading">
             <div>
@@ -435,6 +502,7 @@ function App() {
                     customers: "Клиенты",
                     settings: "Модель риска",
                     source: "Источники данных",
+                    actions: "Работа с клиентами",
                   }[view]
                 }
               </h1>
@@ -445,6 +513,7 @@ function App() {
                     customers: "Приоритеты для вашей следующей коммуникации.",
                     settings: "Прозрачные правила. Управляемые коэффициенты.",
                     source: "Исходные данные и качество прогноза.",
+                    actions: "Контакты и результаты работы с клиентами.",
                   }[view]
                 }
               </p>
@@ -455,12 +524,14 @@ function App() {
                 дней
               </span>
               {view === "overview" && (
-                <button
-                  className="primary"
-                  onClick={() => navigate("customers")}
-                >
-                  Все клиенты <ArrowUpRight size={17} />
-                </button>
+                <>
+                  <button className="secondary" onClick={showForecast}>
+                    <Activity size={16} /> К графику
+                  </button>
+                  <button className="primary" onClick={openScenario}>
+                    <SlidersHorizontal size={16} /> Что если?
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -487,16 +558,17 @@ function App() {
                   onCustomers={() => navigate("customers")}
                   onSource={() => navigate("source")}
                 />
-                <CustomerTable compact onSelect={setCustomerId} />
+                <CustomerTable compact onSelect={openCustomer} />
               </>
             ) : (
               <Loading />
             ))}
-          {view === "customers" && <CustomerTable onSelect={setCustomerId} />}
+          {view === "customers" && <CustomerTable onSelect={openCustomer} />}
           {view === "settings" && <ModelSettings onSuccess={setToast} />}
           {view === "source" && (
             <SourcePanel summary={summary.data} onSuccess={setToast} />
           )}
+          {view === "actions" && <ActionQueue onSelect={openCustomer} onSuccess={setToast} />}
           <footer className="page-footer">
             <span>© 2026 · Aéza Retention</span>
             <span>
@@ -506,7 +578,7 @@ function App() {
         </main>
       </div>
       {customerId !== null && (
-        <CustomerDrawer id={customerId} onClose={() => setCustomerId(null)} />
+        <CustomerDrawer id={customerId} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
       )}
       {toast && (
         <div className="toast" role="status">
@@ -530,6 +602,10 @@ function Overview({
   onCustomers: () => void;
   onSource: () => void;
 }) {
+  const history = useQuery({
+    queryKey: ["history", data.source_version],
+    queryFn: () => api("/analytics/history?limit=20"),
+  });
   const total = data.customer_count || 1,
     calendar = data.renewal_calendar || [],
     max = Math.max(...calendar.map((d: any) => d.due_eur), 1);
@@ -627,7 +703,7 @@ function Overview({
           </span>
         </button>
       )}
-      <section className="chart-grid">
+      <section className="chart-grid" id="forecast-chart">
         <div className="panel distribution">
           <div className="panel-heading">
             <div>
@@ -671,12 +747,14 @@ function Overview({
         <div className="panel calendar">
           <div className="panel-heading">
             <div>
-              <h2>Ближайшие продления</h2>
-              <p>Объём известных платежей, EUR</p>
+              <h2>Прогноз по дням</h2>
+              <p>Платежи и сценарная сумма под риском, EUR</p>
             </div>
             <span className="chart-key">
               <i />
-              Расписание
+              Платежи
+              <i className="risk-key" />
+              Под риском
             </span>
           </div>
           <div className="bar-chart">
@@ -695,13 +773,18 @@ function Overview({
                         height: `${Math.max((d.due_eur / max) * 100, d.due_eur ? 3 : 0)}%`,
                       }}
                       tabIndex={0}
-                      aria-label={`${d.day}: ${money(d.due_eur)}, платежей ${d.payments}`}
+                      aria-label={`${d.day}: платежи ${money(d.due_eur)}, под риском ${money(d.risk_eur)}, услуг со средним или высоким риском ${d.risk_services}`}
                     >
                       <span>
-                        {money(d.due_eur)}
-                        <small>{d.payments} платежей</small>
+                        Платежи: {money(d.due_eur)}
+                        <small>Под риском: {money(d.risk_eur)}</small>
                       </span>
                     </div>
+                    <div
+                      className="bar bar-risk"
+                      style={{ height: `${Math.max((d.risk_eur / max) * 100, d.risk_eur ? 3 : 0)}%` }}
+                      title={`${d.risk_services} услуг со средним или высоким риском`}
+                    />
                   </div>
                   <span>
                     {new Date(d.day + "T12:00:00Z").toLocaleDateString(
@@ -717,6 +800,34 @@ function Overview({
             <Info size={13} /> Расписание по текущим данным; фактическая оплата
             может отличаться
           </div>
+        </div>
+      </section>
+      <section className="panel history-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>История статусов услуг</h2>
+            <p>Факт из загруженных снимков отдельно от прогноза выше</p>
+          </div>
+          <span className="subtle-tag">{history.data?.snapshots.length ?? 0} версий</span>
+        </div>
+        {history.isError && <ErrorBox message={history.error.message} />}
+        <div className="history-list">
+          {history.data?.snapshots.map((snapshot: any) => (
+            <details key={snapshot.source_version}>
+              <summary>
+                <strong>Данные v{snapshot.source_version}</strong>
+                <span>{date(snapshot.imported_at)} МСК</span>
+                <span>{snapshot.transitions.length} смен статуса</span>
+                <span>{snapshot.deleted_count} удалений</span>
+              </summary>
+              <div className="history-details">
+                {snapshot.transitions.length ? snapshot.transitions.map((transition: any) => (
+                  <p key={transition.service_id}>#{transition.service_id} {transition.name}: {transition.from_status} → {transition.to_status}</p>
+                )) : <p>Изменений статусов относительно предыдущего снимка нет.</p>}
+              </div>
+            </details>
+          ))}
+          {!history.isPending && !history.data?.snapshots.length && <p>История появится после загрузки данных.</p>}
         </div>
       </section>
     </>
@@ -935,12 +1046,57 @@ function CustomerTable({
   );
 }
 
-function CustomerDrawer({ id, onClose }: { id: number; onClose: () => void }) {
+function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number; focusScenario: boolean; onClose: () => void; onSuccess: (message: string) => void }) {
   const query = useQuery({
     queryKey: ["customer", id],
     queryFn: () => api("/customers/" + id),
     refetchInterval: 5000,
   });
+  const queryClient = useQueryClient();
+  const scenarioRef = useRef<HTMLElement>(null);
+  const [scenarioBalance, setScenarioBalance] = useState("");
+  const [scenarioService, setScenarioService] = useState("");
+  const [scenarioAuto, setScenarioAuto] = useState(false);
+  const [scenario, setScenario] = useState<any>(null);
+  const [scenarioError, setScenarioError] = useState("");
+  const [scenarioPending, setScenarioPending] = useState(false);
+  async function runScenario() {
+    setScenarioPending(true);
+    setScenarioError("");
+    try {
+      const payload: Record<string, number | boolean> = {};
+      if (scenarioBalance !== "") payload.balance_cents = Math.round(Number(scenarioBalance) * 100);
+      if (scenarioService) {
+        payload.service_id = Number(scenarioService);
+        payload.auto_prolong = scenarioAuto;
+      }
+      setScenario(await api(`/customers/${id}/simulate`, { method: "POST", body: JSON.stringify(payload) }));
+    } catch (error) {
+      setScenarioError((error as Error).message);
+    } finally {
+      setScenarioPending(false);
+    }
+  }
+  async function addAction() {
+    try {
+      const existing = await api("/actions");
+      if (existing.items.some((item: any) => item.customer_id === id)) {
+        onSuccess("Клиент уже добавлен в работу");
+        return;
+      }
+      await api(`/actions/${id}`, { method: "PUT", body: JSON.stringify({ status: "open", note: "" }) });
+      await queryClient.invalidateQueries({ queryKey: ["actions"] });
+      onSuccess("Клиент добавлен в работу");
+    } catch (error) {
+      setScenarioError((error as Error).message);
+    }
+  }
+  useEffect(() => {
+    if (focusScenario && query.data) {
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      scenarioRef.current?.scrollIntoView({ behavior, block: "start" });
+    }
+  }, [focusScenario, query.data]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -1032,6 +1188,35 @@ function CustomerDrawer({ id, onClose }: { id: number; onClose: () => void }) {
                 балансом. Это сценарная оценка, а не гарантированная потеря.
               </span>
             </div>
+            <button className="secondary drawer-action" onClick={addAction}>
+              <ClipboardList size={16} /> Добавить в работу
+            </button>
+            <section className="scenario-panel" ref={scenarioRef}>
+              <h3>Что если?</h3>
+              <p>Расчёт без изменения данных и настроек.</p>
+              <label>
+                Основной баланс, EUR
+                <input type="number" min="0" step="0.01" value={scenarioBalance} placeholder={String(c.balance / 100)} onChange={(event) => setScenarioBalance(event.target.value)} />
+              </label>
+              <label>
+                Услуга
+                <select value={scenarioService} onChange={(event) => {
+                  const service = c.services.find((item: any) => String(item.id) === event.target.value);
+                  setScenarioService(event.target.value);
+                  setScenarioAuto(service?.autoProlong ?? false);
+                }}>
+                  <option value="">Не менять автопродление</option>
+                  {c.services.map((service: any) => <option value={service.id} key={service.id}>{service.name}</option>)}
+                </select>
+              </label>
+              {scenarioService && <label className="scenario-check"><input type="checkbox" checked={scenarioAuto} onChange={(event) => setScenarioAuto(event.target.checked)} /> Включить автопродление</label>}
+              <button className="primary" disabled={scenarioPending || (!scenarioService && scenarioBalance === "")} onClick={runScenario}>Рассчитать сценарий</button>
+              {scenarioError && <ErrorBox message={scenarioError} />}
+              {scenario && <div className="scenario-result">
+                <span>Индекс: {scenario.before.score ?? "—"} → <strong>{scenario.after.score ?? "—"}</strong></span>
+                <span>Под риском: {money(scenario.before.loss_eur)} → <strong>{money(scenario.after.loss_eur)}</strong></span>
+              </div>}
+            </section>
             <h3 className="section-label">
               Услуги клиента <span>{c.services.length}</span>
             </h3>
@@ -1102,6 +1287,51 @@ function CustomerDrawer({ id, onClose }: { id: number; onClose: () => void }) {
       </aside>
     </div>
   );
+}
+
+function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; onSuccess: (message: string) => void }) {
+  const query = useQuery({ queryKey: ["actions"], queryFn: () => api("/actions"), refetchInterval: 5000 });
+  const queryClient = useQueryClient();
+  if (query.isError) return <ErrorBox message={query.error.message} />;
+  if (query.isPending) return <Loading />;
+  return <section className="panel action-panel">
+    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Добавляйте клиентов из карточки, фиксируйте результат общения.</p></div><span className="subtle-tag">{query.data.items.length} в работе</span></div>
+    {query.data.items.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Очередь пуста</h3><p>Откройте клиента и нажмите «Добавить в работу».</p></div>}
+    <div className="action-list">{query.data.items.map((action: any) => <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={() => queryClient.invalidateQueries({ queryKey: ["actions"] })} />)}</div>
+  </section>;
+}
+
+function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onSelect: (id: number) => void; onSuccess: (message: string) => void; onSaved: () => void }) {
+  const [status, setStatus] = useState(action.status);
+  const [note, setNote] = useState(action.note);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  async function save() {
+    setPending(true);
+    setError("");
+    try {
+      await api(`/actions/${action.customer_id}`, { method: "PUT", body: JSON.stringify({ status, note }) });
+      onSaved();
+      onSuccess("Результат работы сохранён");
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
+  return <article className="action-card">
+    <div className="action-card-head">
+      <button onClick={() => onSelect(action.customer_id)}>{action.customer?.email ?? `Клиент #${action.customer_id}`}</button>
+      <span>{action.customer ? <Badge level={action.customer.risk_level} /> : "Нет в текущем снимке"}</span>
+    </div>
+    {action.customer && <p>{action.customer.reason} · {money(action.customer.loss_eur)} под риском</p>}
+    <div className="action-fields">
+      <label>Статус<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="open">В работе</option><option value="contacted">Связались</option><option value="resolved">Завершено</option></select></label>
+      <label>Заметка<textarea value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} placeholder="Что обсудили с клиентом" /></label>
+    </div>
+    {error && <ErrorBox message={error} />}
+    <div className="action-card-foot"><span>Обновлено {date(action.updated_at)} МСК</span><button className="primary" disabled={pending} onClick={save}>Сохранить</button></div>
+  </article>;
 }
 
 function ModelSettings({ onSuccess }: { onSuccess: (s: string) => void }) {

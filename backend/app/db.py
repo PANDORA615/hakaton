@@ -35,6 +35,13 @@ runs = Table('calculation_runs', metadata, Column('id', Integer, primary_key=Tru
 users = Table('users', metadata, Column('id', Integer, primary_key=True), Column('login', String, unique=True, nullable=False), Column('password_hash', Text, nullable=False))
 sessions = Table('sessions', metadata, Column('token_hash', String, primary_key=True), Column('user_id', Integer, ForeignKey('users.id'), nullable=False),
                  Column('csrf', String, nullable=False), Column('expires', String, nullable=False))
+marketing_actions = Table('marketing_actions', metadata,
+    Column('id', ID_TYPE, Identity(), primary_key=True),
+    Column('customer_id', BigInteger, nullable=False, unique=True),
+    Column('status', String, nullable=False),
+    Column('note', Text, nullable=False, server_default=text("''")),
+    Column('updated_at', String, nullable=False),
+    CheckConstraint("status IN ('open','contacted','resolved')"))
 
 
 def make_engine(url):

@@ -3,7 +3,7 @@
   "info": {
     "title": "Aéza Retention API",
     "description": "Explainable retention index. Cookie session required; mutating authenticated requests require X-CSRF-Token. All source money fields are integer EUR cents. API fields ending _eur are EUR. Scores are indices, not calibrated probabilities.",
-    "version": "0.1.0"
+    "version": "0.4.0"
   },
   "paths": {
     "/api/v1/auth/login": {
@@ -272,6 +272,206 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/analytics/history": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "History",
+        "operationId": "history_api_v1_analytics_history_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/customers/{customer_id}/simulate": {
+      "post": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Simulate",
+        "operationId": "simulate_api_v1_customers__customer_id__simulate_post",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "csrf_token returned by login/me"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/actions": {
+      "get": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Actions",
+        "operationId": "actions_api_v1_actions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/actions/{customer_id}": {
+      "put": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Save Action",
+        "operationId": "save_action_api_v1_actions__customer_id__put",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "csrf_token returned by login/me"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -621,6 +821,27 @@
         ],
         "title": "Account"
       },
+      "ActionRequest": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "pattern": "^(open|contacted|resolved)$",
+            "title": "Status"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ActionRequest"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -655,6 +876,49 @@
           "password"
         ],
         "title": "Login"
+      },
+      "ScenarioRequest": {
+        "properties": {
+          "balance_cents": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Cents"
+          },
+          "service_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Id"
+          },
+          "auto_prolong": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Prolong"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScenarioRequest"
       },
       "Service": {
         "properties": {

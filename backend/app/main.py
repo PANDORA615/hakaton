@@ -18,7 +18,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Response, Query
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from prometheus_client import CollectorRegistry, Gauge, Counter, generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy import select, insert, delete, text
 from . import db
@@ -44,6 +44,27 @@ class SettingsPatch(BaseModel):
     high_threshold: float | None = None
     coverage_threshold: float | None = None
     funded_multiplier: float | None = None
+
+
+class ScenarioRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    balance_cents: int | None = Field(default=None, ge=0, le=9223372036854775807)
+    service_id: int | None = Field(default=None, gt=0)
+    auto_prolong: bool | None = None
+
+    @model_validator(mode='after')
+    def valid_scenario(self):
+        if (self.service_id is None) != (self.auto_prolong is None):
+            raise ValueError('Укажите услугу и состояние автопродления вместе')
+        if self.balance_cents is None and self.service_id is None:
+            raise ValueError('Укажите хотя бы одно изменение')
+        return self
+
+
+class ActionRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    status: str = Field(pattern='^(open|contacted|resolved)$')
+    note: str = Field(default='', max_length=2000)
 
 
 def create_app(database_url=None, data_path=None, password=None, fixed_as_of=None, testing=False):
@@ -91,7 +112,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         await task
         engine.dispose()
 
-    app = FastAPI(title='Aéza Retention API', version='0.1.0', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title='Aéza Retention API', version='0.4.0', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
 
     @app.middleware('http')
@@ -212,6 +233,28 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     def summary():
         data = store.current()
         return {**version(data), **data['summary'], 'duration_seconds': data['duration_seconds'], 'recalculation_failures': store.failures}
+
+    @app.get('/api/v1/analytics/history', dependencies=[Depends(authorized)], tags=['analytics'])
+    def history(limit: int = Query(30, ge=1, le=100)):
+        return {'snapshots': store.history(limit), 'definition': 'Факт удаления — переход статуса услуги в deleted между загруженными снимками'}
+
+    @app.post('/api/v1/customers/{customer_id}/simulate', dependencies=[Depends(authorized)], tags=['customers'])
+    def simulate(customer_id: int, body: ScenarioRequest):
+        try:
+            return store.simulate(customer_id, body.balance_cents, body.service_id, body.auto_prolong)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    @app.get('/api/v1/actions', dependencies=[Depends(authorized)], tags=['actions'])
+    def actions():
+        return {'items': store.actions()}
+
+    @app.put('/api/v1/actions/{customer_id}', dependencies=[Depends(authorized)], tags=['actions'])
+    def save_action(customer_id: int, body: ActionRequest):
+        try:
+            return store.save_action(customer_id, body.status, body.note)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
 
     @app.get('/api/v1/model/settings', dependencies=[Depends(authorized)], tags=['model'])
     def settings():

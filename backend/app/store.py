@@ -2,10 +2,10 @@ import json
 import threading
 import time
 from datetime import datetime, timezone
-from sqlalchemy import select, insert, delete, text, func
+from sqlalchemy import select, insert, delete, update, text, func
 from . import db
 from .schemas import Snapshot, Settings
-from .scoring import calculate
+from .scoring import calculate, CALCULATION_SCHEMA_VERSION
 
 
 class Conflict(Exception):
@@ -37,8 +37,10 @@ class Store:
         if not has_source:
             with open(path, encoding='utf-8') as f:
                 self.replace_snapshot(Snapshot.model_validate(json.load(f)))
-        elif not self.current():
-            self.recalculate()
+        else:
+            current = self.current()
+            if not current or current.get('schema_version') != CALCULATION_SCHEMA_VERSION:
+                self.recalculate()
 
     def _calculate(self, conn):
         started = time.monotonic()
@@ -104,3 +106,65 @@ class Store:
     def source(self):
         with self.engine.connect() as conn:
             return self.latest(conn, db.snapshots)['payload']
+
+    def history(self, limit=30):
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(db.snapshots).order_by(db.snapshots.c.id.desc()).limit(limit + 1)).mappings().all()
+        rows = list(reversed(rows))
+        result = []
+        previous = None
+        for row in rows:
+            services = {service['id']: service for service in row['payload']['services']}
+            transitions = []
+            if previous is not None:
+                for service_id, service in services.items():
+                    old = previous.get(service_id)
+                    if old and old['status'] != service['status']:
+                        transitions.append({'service_id': service_id, 'customer_id': service['ownerId'],
+                                            'name': service['name'], 'from_status': old['status'], 'to_status': service['status']})
+            result.append({'source_version': row['id'], 'imported_at': row['imported_at'],
+                           'service_count': len(services), 'transitions': transitions,
+                           'deleted_count': sum(item['to_status'] == 'deleted' for item in transitions)})
+            previous = services
+        return list(reversed(result[-limit:]))
+
+    def simulate(self, customer_id, balance_cents=None, service_id=None, auto_prolong=None):
+        with self.lock, self.engine.connect() as conn:
+            current = self.latest(conn, db.runs)
+            source = Snapshot.model_validate(self.latest(conn, db.snapshots)['payload'])
+            settings = Settings.model_validate(self.latest(conn, db.settings_versions)['payload'])
+            account = next((account for account in source.accounts if account.id == customer_id), None)
+            if account is None:
+                raise LookupError('Клиент не найден')
+            if balance_cents is not None:
+                account.balance = balance_cents
+            if service_id is not None:
+                service = next((service for service in source.services if service.id == service_id and service.ownerId == customer_id), None)
+                if service is None:
+                    raise LookupError('Услуга клиента не найдена')
+                service.autoProlong = auto_prolong
+            before = next(customer for customer in current['payload']['customers'] if customer['id'] == customer_id)
+            scenario = calculate(source, settings, datetime.fromisoformat(current['as_of']))
+            after = next(customer for customer in scenario['customers'] if customer['id'] == customer_id)
+            return {'before': before, 'after': after, 'as_of': current['as_of'],
+                    'calculation_version': current['id'], 'saved': False}
+
+    def actions(self):
+        current = self.current()
+        customers = {customer['id']: customer for customer in current['customers']}
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(db.marketing_actions).order_by(db.marketing_actions.c.updated_at.desc())).mappings().all()
+        return [{**dict(row), 'customer': customers.get(row['customer_id'])} for row in rows]
+
+    def save_action(self, customer_id, status, note):
+        customer_exists = any(customer['id'] == customer_id for customer in self.current()['customers'])
+        with self.lock, self.engine.begin() as conn:
+            existing = conn.execute(select(db.marketing_actions.c.id).where(db.marketing_actions.c.customer_id == customer_id)).scalar_one_or_none()
+            if existing is None and not customer_exists:
+                raise LookupError('Клиент не найден')
+            values = {'status': status, 'note': note, 'updated_at': datetime.now(timezone.utc).isoformat()}
+            if existing is None:
+                conn.execute(insert(db.marketing_actions).values(customer_id=customer_id, **values))
+            else:
+                conn.execute(update(db.marketing_actions).where(db.marketing_actions.c.id == existing).values(**values))
+        return next(action for action in self.actions() if action['customer_id'] == customer_id)
