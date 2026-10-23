@@ -1,7 +1,11 @@
 .env
 .venv/
+node_modules/
 __pycache__/
-*.py[cod]
-db.sqlite3
-staticfiles/
-
+.pytest_cache/
+*.db
+*.db-*
+frontend/dist/
+.runtime/
+*.zip
+*.tsbuildinfo
