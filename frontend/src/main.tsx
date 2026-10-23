@@ -36,6 +36,8 @@ import {
   Zap,
   Upload,
   Menu,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { api, setCSRF, levels, money, date, Level } from "./api";
 import "./style.css";
@@ -53,6 +55,36 @@ const levelColors: Record<Level, string> = {
   unknown: "#a8adb7",
 };
 type View = "overview" | "customers" | "settings" | "source";
+type Theme = "light" | "dark";
+
+function initialTheme(): Theme {
+  const saved = localStorage.getItem("aeza-theme");
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function ThemeToggle({
+  theme,
+  onToggle,
+}: {
+  theme: Theme;
+  onToggle: () => void;
+}) {
+  const dark = theme === "dark";
+  return (
+    <button
+      className="theme-toggle icon-btn"
+      type="button"
+      onClick={onToggle}
+      aria-label={dark ? "Включить светлую тему" : "Включить тёмную тему"}
+      title={dark ? "Светлая тема" : "Тёмная тема"}
+    >
+      {dark ? <Sun size={18} /> : <Moon size={18} />}
+    </button>
+  );
+}
 
 function Logo() {
   return (
@@ -100,7 +132,15 @@ function Loading() {
   );
 }
 
-function LoginPage({ onLogin }: { onLogin: (u: any) => void }) {
+function LoginPage({
+  onLogin,
+  theme,
+  onToggleTheme,
+}: {
+  onLogin: (u: any) => void;
+  theme: Theme;
+  onToggleTheme: () => void;
+}) {
   const [login, setLogin] = useState("admin"),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
@@ -149,6 +189,9 @@ function LoginPage({ onLogin }: { onLogin: (u: any) => void }) {
         </div>
       </div>
       <div className="login-form-area">
+        <div className="login-theme-toggle">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
         <form onSubmit={submit} className="login-form">
           <span className="square-icon">
             <LockKeyhole size={24} />
@@ -200,7 +243,12 @@ function App() {
     [connection, setConnection] = useState("Подключение…"),
     [mobile, setMobile] = useState(false),
     [toast, setToast] = useState("");
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const qc = useQueryClient();
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("aeza-theme", theme);
+  }, [theme]);
   useEffect(() => {
     api("/auth/me")
       .then((u) => {
@@ -257,7 +305,14 @@ function App() {
     setMobile(false);
   }
   if (checking) return <Loading />;
-  if (!user) return <LoginPage onLogin={setUser} />;
+  if (!user)
+    return (
+      <LoginPage
+        onLogin={setUser}
+        theme={theme}
+        onToggleTheme={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+      />
+    );
   return (
     <div className="app-shell">
       {mobile && (
@@ -359,6 +414,12 @@ function App() {
               {connection}
             </span>
             <span className="topbar-divider" />
+            <ThemeToggle
+              theme={theme}
+              onToggle={() =>
+                setTheme((value) => (value === "dark" ? "light" : "dark"))
+              }
+            />
             <span className="small-avatar">A</span>
           </div>
         </header>

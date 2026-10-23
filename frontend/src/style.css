@@ -15,11 +15,19 @@
   --border: #edeef0;
   --ink: #242628;
 }
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --border: #343943;
+  --ink: #f2f4f7;
+  --muted: #adb4bf;
+}
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
+  background: #f6f7f8;
+  color: var(--ink);
 }
 button,
 input,
@@ -321,6 +329,19 @@ nav button:hover {
   width: 1px;
   background: #eee;
   margin: 0 9px;
+}
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: #747a83;
+  background: #f7f8fa;
+}
+.theme-toggle:hover {
+  color: var(--orange);
+  background: #fff1e5;
 }
 .small-avatar {
   width: 30px;
@@ -1764,6 +1785,11 @@ tbody tr:hover {
   position: relative;
   padding: 50px;
 }
+.login-theme-toggle {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+}
 .login-form {
   max-width: 340px;
   width: 100%;
@@ -1815,6 +1841,110 @@ tbody tr:hover {
   font-size: 10px;
   color: #b1b8c1;
   margin-top: 20px;
+}
+
+/* Theme surfaces are grouped here so the light design stays untouched while
+   every application screen receives a coherent dark alternative. */
+html[data-theme="dark"] {
+  background: #12151a;
+  color: var(--ink);
+}
+html[data-theme="dark"] body,
+html[data-theme="dark"] .main-shell,
+html[data-theme="dark"] .login-form-area {
+  background: #12151a;
+  color: var(--ink);
+}
+html[data-theme="dark"] .sidebar,
+html[data-theme="dark"] .topbar,
+html[data-theme="dark"] .kpi,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .settings-aside,
+html[data-theme="dark"] .source-stats > div,
+html[data-theme="dark"] .service-card,
+html[data-theme="dark"] .drawer,
+html[data-theme="dark"] .toast,
+html[data-theme="dark"] .model-note {
+  background: #1b2028;
+  border-color: var(--border);
+  color: var(--ink);
+}
+html[data-theme="dark"] .logo,
+html[data-theme="dark"] .topbar strong,
+html[data-theme="dark"] .page-heading h1,
+html[data-theme="dark"] .panel-heading h2,
+html[data-theme="dark"] .settings-aside h2,
+html[data-theme="dark"] .drawer-title h2,
+html[data-theme="dark"] .login-form h2,
+html[data-theme="dark"] .kpi > strong,
+html[data-theme="dark"] .number,
+html[data-theme="dark"] .client-cell {
+  color: var(--ink);
+}
+html[data-theme="dark"] .workspace,
+html[data-theme="dark"] .search,
+html[data-theme="dark"] .filter,
+html[data-theme="dark"] .count-tag,
+html[data-theme="dark"] .subtle-tag,
+html[data-theme="dark"] .client-avatar,
+html[data-theme="dark"] .file-drop,
+html[data-theme="dark"] .weight-control input[type="number"],
+html[data-theme="dark"] .parameter-grid input,
+html[data-theme="dark"] .login-form input {
+  background: #15191f;
+  border-color: #3b424d;
+  color: var(--ink);
+}
+html[data-theme="dark"] .search input,
+html[data-theme="dark"] .filter select,
+html[data-theme="dark"] .parameter-grid input,
+html[data-theme="dark"] .login-form input {
+  color: var(--ink);
+}
+html[data-theme="dark"] .search input::placeholder,
+html[data-theme="dark"] .login-form input::placeholder {
+  color: #858e9c;
+}
+html[data-theme="dark"] thead {
+  background: #202630;
+  border-color: #353c47;
+}
+html[data-theme="dark"] td {
+  border-color: #303742;
+}
+html[data-theme="dark"] tbody tr:hover {
+  background: #25201d;
+}
+html[data-theme="dark"] .bars {
+  background: repeating-linear-gradient(
+    to bottom,
+    #353c47 0,
+    #353c47 1px,
+    transparent 1px,
+    transparent 59px
+  );
+}
+html[data-theme="dark"] .donut > div {
+  background: #1b2028;
+  box-shadow: 0 0 0 5px #1b2028;
+}
+html[data-theme="dark"] .theme-toggle {
+  background: #282f39;
+  color: #d4d9e1;
+}
+html[data-theme="dark"] .theme-toggle:hover {
+  background: #3a2a1f;
+  color: #ffad66;
+}
+html[data-theme="dark"] nav button:hover {
+  background: #262c35;
+}
+html[data-theme="dark"] .quality-banner {
+  background: #2a251d;
+  border-color: #57452c;
+}
+html[data-theme="dark"] .login-theme-toggle .theme-toggle {
+  background: #252b34;
 }
 .login-bottom {
   position: absolute;
