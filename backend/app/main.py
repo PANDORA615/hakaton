@@ -149,8 +149,8 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         if len(oidc_config['OIDC_SESSION_SECRET']) < 32:
             raise ValueError('OIDC_SESSION_SECRET must contain at least 32 characters')
         allowed_subs = {item.strip() for item in oidc_config['OIDC_ALLOWED_SUB'].split(',') if item.strip()}
-        if not allowed_subs:
-            raise ValueError('OIDC_ALLOWED_SUB must contain at least one subject')
+        if len(allowed_subs) != 1:
+            raise ValueError('OIDC_ALLOWED_SUB must contain exactly one subject while the app has one local administrator')
     attempts = defaultdict(deque)
     attempts_lock = threading.Lock()
 
@@ -297,9 +297,24 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         async def oidc_callback(request: Request):
             try:
                 token = await oauth.provider.authorize_access_token(request)
-                subject = token.get('userinfo', {}).get('sub')
+                # Authlib populates userinfo only after validating the signed ID token,
+                # including issuer, audience, expiry and the nonce from this login flow.
+                claims = token.get('userinfo') or {}
+                if not token.get('id_token'):
+                    raise ValueError('OIDC ID token is missing')
+                if claims.get('iss') != oidc_config['OIDC_ISSUER_URL']:
+                    raise ValueError('OIDC issuer mismatch')
+                audience = claims.get('aud', [])
+                if isinstance(audience, str):
+                    audience = [audience]
+                if oidc_config['OIDC_CLIENT_ID'] not in audience:
+                    raise ValueError('OIDC audience mismatch')
+                if claims.get('azp') and claims['azp'] != oidc_config['OIDC_CLIENT_ID']:
+                    raise ValueError('OIDC authorized party mismatch')
+                subject = claims.get('sub')
                 if not subject or subject not in allowed_subs:
-                    raise ValueError('OIDC subject is not authorized')
+                    logger.warning('OIDC sign-in rejected: subject is not authorized')
+                    return RedirectResponse('/?auth_error=oidc_unauthorized', status_code=303)
                 with engine.connect() as conn:
                     user = conn.execute(select(db.users).order_by(db.users.c.id).limit(1)).mappings().first()
                 if user is None:
@@ -307,8 +322,8 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                 response = RedirectResponse('/?oidc_login=success', status_code=303)
                 issue_session(user, response, request, remember_me=request.session.get('remember_me', False))
                 return response
-            except Exception:
-                logger.exception('OIDC sign-in failed')
+            except Exception as exc:
+                logger.warning('OIDC sign-in failed: %s', type(exc).__name__)
                 return RedirectResponse('/?auth_error=oidc_failed', status_code=303)
             finally:
                 request.session.clear()

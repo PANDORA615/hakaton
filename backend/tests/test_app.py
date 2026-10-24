@@ -123,6 +123,9 @@ def test_oidc_requires_allowed_subject_and_issues_local_session(tmp_path, monkey
 
     class Provider:
         subject = 'unknown'
+        issuer = 'https://identity.example/realms/prototype'
+        audience = 'prototype'
+        id_token = 'validated-by-provider-stub'
 
         async def authorize_redirect(self, request, redirect_uri):
             request.session['state'] = 'test-state'
@@ -130,7 +133,7 @@ def test_oidc_requires_allowed_subject_and_issues_local_session(tmp_path, monkey
 
         async def authorize_access_token(self, request):
             assert request.session['state'] == 'test-state'
-            return {'userinfo': {'sub': self.subject}}
+            return {'id_token': self.id_token, 'userinfo': {'sub': self.subject, 'iss': self.issuer, 'aud': self.audience}}
 
     provider = Provider()
 
@@ -155,15 +158,30 @@ def test_oidc_requires_allowed_subject_and_issues_local_session(tmp_path, monkey
         oidc_client.get('/api/v1/auth/oidc/start', follow_redirects=False)
         denied = oidc_client.get('/api/v1/auth/oidc/callback', follow_redirects=False)
         assert denied.status_code == 303
-        assert 'auth_error=oidc_failed' in denied.headers['location']
+        assert 'auth_error=oidc_unauthorized' in denied.headers['location']
         assert oidc_client.get('/api/v1/auth/me').status_code == 401
         provider.subject = 'approved-subject'
+        provider.id_token = ''
+        oidc_client.get('/api/v1/auth/oidc/start', follow_redirects=False)
+        assert 'auth_error=oidc_failed' in oidc_client.get('/api/v1/auth/oidc/callback', follow_redirects=False).headers['location']
+        provider.id_token = 'validated-by-provider-stub'
+        provider.issuer = 'https://wrong.example'
+        oidc_client.get('/api/v1/auth/oidc/start', follow_redirects=False)
+        assert 'auth_error=oidc_failed' in oidc_client.get('/api/v1/auth/oidc/callback', follow_redirects=False).headers['location']
+        provider.issuer = settings['OIDC_ISSUER_URL']
+        provider.audience = 'other-client'
+        oidc_client.get('/api/v1/auth/oidc/start', follow_redirects=False)
+        assert 'auth_error=oidc_failed' in oidc_client.get('/api/v1/auth/oidc/callback', follow_redirects=False).headers['location']
+        provider.audience = settings['OIDC_CLIENT_ID']
         oidc_client.get('/api/v1/auth/oidc/start?remember_me=true', follow_redirects=False)
         accepted = oidc_client.get('/api/v1/auth/oidc/callback', follow_redirects=False)
         assert accepted.status_code == 303
         assert accepted.headers['location'] == '/?oidc_login=success'
         assert oidc_client.get('/api/v1/auth/me').json()['login'] == 'admin'
         assert oidc_client.get('/api/v1/auth/me').json()['remember_me'] is True
+    monkeypatch.setenv('OIDC_ALLOWED_SUB', 'approved-subject,another-subject')
+    with pytest.raises(ValueError, match='exactly one subject'):
+        create_app(f'sqlite:///{tmp_path}/multi-sub.db', str(DATA_PATH), PASSWORD, NOW, testing=True)
 
 
 def test_account_profile_password_and_sessions(client):

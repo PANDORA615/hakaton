@@ -267,6 +267,12 @@ function OidcDemo({
   );
 }
 
+function oidcErrorMessage(code: string | null) {
+  if (code === "oidc_unauthorized") return "Учётная запись провайдера не разрешена для этого приложения. Обратитесь к администратору.";
+  if (code) return "Не удалось завершить единый вход. Попробуйте ещё раз или войдите по паролю.";
+  return "";
+}
+
 function LoginPage({
   onLogin,
   theme,
@@ -282,7 +288,7 @@ function LoginPage({
 }) {
   const [login, setLogin] = useState("admin"),
     [password, setPassword] = useState(""),
-    [error, setError] = useState(() => new URLSearchParams(window.location.search).has("auth_error") ? "Не удалось войти через единый вход. Попробуйте ещё раз или используйте пароль." : ""),
+    [error, setError] = useState(() => oidcErrorMessage(new URLSearchParams(window.location.search).get("auth_error"))),
     [pending, setPending] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
@@ -1944,7 +1950,6 @@ function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }:
       setSavingSecurity(false);
     }
   }
-
   if (pending) return <Loading />;
   if (error) return <ErrorBox message={error.message} />;
   if (!data) return null;
