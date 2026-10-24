@@ -50,7 +50,7 @@ import {
 } from "lucide-react";
 import { api, ApiError, setCSRF, levels, money, date, Level, setDisplayPreferences, displayFromEuro, euroCentsFromDisplay, currencySymbol, formatReason, Currency, Language, FxRates } from "./api";
 import { installTranslations } from "./i18n";
-import { GlobalSearch, HelpCenter, GuideDialog, GUIDE_ENTRIES, AppView, HelpTarget } from './navigation';
+import { GlobalSearch, HelpCenter, GuideDialog, FoxQuestionDialog, GUIDE_ENTRIES, AppView, HelpTarget } from './navigation';
 import { CompetitorRadar } from './competitorRadar';
 import "./style.css";
 
@@ -434,6 +434,9 @@ function App() {
     [profileMenuOpen, setProfileMenuOpen] = useState(false),
     [searchOpen, setSearchOpen] = useState(false),
     [guideStep, setGuideStep] = useState<number | null>(null),
+    [foxMenuOpen, setFoxMenuOpen] = useState(false),
+    [foxQuestionOpen, setFoxQuestionOpen] = useState(false),
+    [welcomeVisible, setWelcomeVisible] = useState(false),
     [horizonPending, setHorizonPending] = useState(false),
     [toast, setToast] = useState("");
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -449,6 +452,13 @@ function App() {
   );
   const qc = useQueryClient();
   const authGeneration = useRef(0);
+  const assistantDockRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!foxMenuOpen) return;
+    const outside = (event: PointerEvent) => { if (!assistantDockRef.current?.contains(event.target as Node)) setFoxMenuOpen(false); };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [foxMenuOpen]);
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const update = (event: MediaQueryListEvent) => setSystemDark(event.matches);
@@ -482,7 +492,7 @@ function App() {
       .then(async (u) => {
         if (generation === authGeneration.current) {
           setCSRF(u.csrf_token);
-          if (u.remember_me || oidcReturn) setUser(u);
+          if (u.remember_me || oidcReturn) { setWelcomeVisible(true); setUser(u); }
           else {
             try { await api("/auth/logout", { method: "POST" }); } catch { /* The next login replaces this session. */ }
             setCSRF("");
@@ -494,6 +504,7 @@ function App() {
     const expire = () => {
       authGeneration.current += 1;
       setUser(null);
+      setWelcomeVisible(false);
       setCSRF("");
       qc.clear();
     };
@@ -519,6 +530,11 @@ function App() {
     const t = setTimeout(() => setToast(""), 4500);
     return () => clearTimeout(t);
   }, [toast]);
+  useEffect(() => {
+    if (!welcomeVisible || !user) return;
+    const timer = window.setTimeout(() => setWelcomeVisible(false), window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1200 : 2100);
+    return () => window.clearTimeout(timer);
+  }, [welcomeVisible, user]);
   const summary = useQuery({
     queryKey: ["summary"],
     queryFn: () => api("/analytics/summary"),
@@ -540,7 +556,7 @@ function App() {
   useEffect(() => installTranslations(language), [language]);
   useEffect(() => {
     localStorage.setItem('aeza-assistant-enabled', String(assistantEnabled));
-    if (!assistantEnabled) setGuideStep(null);
+    if (!assistantEnabled) { setGuideStep(null); setFoxMenuOpen(false); setFoxQuestionOpen(false); }
   }, [assistantEnabled]);
   useEffect(() => {
     if (user && assistantEnabled && !localStorage.getItem('aeza-assistant-seen')) {
@@ -560,6 +576,7 @@ function App() {
       authGeneration.current += 1;
       setCSRF("");
       setUser(null);
+      setWelcomeVisible(false);
       qc.clear();
     } catch (e) {
       setToast((e as Error).message);
@@ -583,6 +600,8 @@ function App() {
   }
   function startGuide() {
     setAssistantEnabled(true);
+    setFoxMenuOpen(false);
+    setFoxQuestionOpen(false);
     setGuideStep(0);
     navigate('overview');
   }
@@ -655,7 +674,7 @@ function App() {
   if (!user)
     return (
       <LoginPage
-        onLogin={(value) => { authGeneration.current += 1; setUser(value); }}
+        onLogin={(value) => { authGeneration.current += 1; setWelcomeVisible(true); setUser(value); }}
         theme={theme}
         systemDark={systemDark}
         onToggleTheme={toggleTheme}
@@ -864,6 +883,7 @@ function App() {
                   fx={fx.data}
                   onCustomers={() => navigate("customers")}
                   onSource={() => navigate("source")}
+                  onForecast={showForecast}
                 />
                 <CustomerTable compact onSelect={openCustomer} />
               </>
@@ -894,8 +914,16 @@ function App() {
       {customerId !== null && (
         <CustomerDrawer key={customerId} id={customerId} currency={currency} fx={fx.data} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
       )}
-      {assistantEnabled && guideStep === null && <button className="assistant-launch" onClick={startGuide} aria-label={language === 'ru' ? 'Позвать лисёнка Aéza' : 'Call Aéza fox'}><img src="/fox-assistant.png" alt="" aria-hidden="true" /><span>{language === 'ru' ? 'Лисёнок Aéza' : 'Aéza fox'}</span></button>}
+      {assistantEnabled && guideStep === null && <div className="assistant-dock" ref={assistantDockRef} onMouseEnter={() => setFoxMenuOpen(true)} onMouseLeave={() => setFoxMenuOpen(false)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFoxMenuOpen(false); }} onKeyDown={(event) => { if (event.key === 'Escape') setFoxMenuOpen(false); }}>
+        {foxMenuOpen && <div className="assistant-menu" id="assistant-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setFoxMenuOpen(false); setFoxQuestionOpen(true); }}><Sparkles size={17} />{language === 'ru' ? 'Спросить у лисёнка' : 'Ask the fox'}</button>
+          <button type="button" role="menuitem" onClick={startGuide}><BookOpen size={17} />{language === 'ru' ? 'Навигация по сайту' : 'Site navigation'}</button>
+        </div>}
+        <button className="assistant-launch" type="button" onClick={() => setFoxMenuOpen(open => window.matchMedia('(hover: hover)').matches ? true : !open)} aria-label={language === 'ru' ? 'Открыть меню лисёнка Aéza' : 'Open Aéza fox menu'} aria-haspopup="menu" aria-expanded={foxMenuOpen} aria-controls={foxMenuOpen ? 'assistant-menu' : undefined}><img src="/fox-assistant.png" alt="" aria-hidden="true" /><span>{language === 'ru' ? 'Лисёнок Aéza' : 'Aéza fox'}</span></button>
+      </div>}
+      {foxQuestionOpen && <FoxQuestionDialog language={language} onClose={() => setFoxQuestionOpen(false)} onNavigate={(target) => { setFoxQuestionOpen(false); goToHelpTarget(target); }} />}
       {guideStep !== null && <GuideDialog language={language} step={guideStep} onPrevious={() => changeGuideStep(guideStep - 1)} onNext={() => changeGuideStep(guideStep + 1)} onClose={closeGuide} />}
+      {welcomeVisible && <div className="welcome-overlay" role="status" aria-live="polite"><div className="welcome-card"><img src="/fox-celebrate.png" alt="" aria-hidden="true" /><span>AÉZA RETENTION</span><h2>{language === 'ru' ? 'Добро пожаловать,' : 'Welcome,'}<br /><strong>{accountSummary.data?.display_name?.trim() || user.login}</strong></h2><p>{language === 'ru' ? 'Подготавливаем рабочую панель' : 'Preparing your dashboard'}</p><i aria-hidden="true" /></div></div>}
       {toast && (
         <div className="toast" role="status">
           <CheckCircle2 size={19} />
@@ -915,12 +943,14 @@ function Overview({
   fx,
   onCustomers,
   onSource,
+  onForecast,
 }: {
   data: any;
   currency: Currency;
   fx?: FxRates;
   onCustomers: () => void;
   onSource: () => void;
+  onForecast: () => void;
 }) {
   const history = useQuery({
     queryKey: ["history", data.source_version],
@@ -939,73 +969,73 @@ function Overview({
     <>
       <p className="currency-note">Валюта: {currency} · {currency === "EUR" ? "исходные данные в евро" : `курс ЦБ РФ на ${fx?.rate_date || "24.10.2026"}: €1 = ${(fx?.rates_rub.EUR || 90.2429).toFixed(4)} ₽${currency === "USD" ? `, $1 = ${(fx?.rates_rub.USD || 80.5381).toFixed(4)} ₽` : ""}`}{fx?.stale ? " · ожидается обновление курса" : ""}</p>
       <section className="kpi-grid">
-        <div className="kpi kpi-main">
-          <div className="kpi-top">
+        <button className="kpi kpi-main kpi-interactive" type="button" onClick={onForecast} aria-label="Платежи под риском. Открыть график прогноза">
+          <span className="kpi-top">
             <span>Платежи под риском</span>
             <ArrowUpRight size={19} />
-          </div>
+          </span>
           <strong>{money(data.loss_eur)}</strong>
-          <div className="kpi-sub">
+          <span className="kpi-sub">
             Сценарная сумма за {data.horizon_days} дней
-          </div>
-          <div className="kpi-bottom">
+          </span>
+          <span className="kpi-bottom">
             <span className="light-tag">
               {data.money_partial ? "Частичная оценка" : "Полная оценка"}
             </span>
             <span>С учётом баланса и риска</span>
-          </div>
-          <div className="kpi-decoration" />
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
+          </span>
+          <span className="kpi-decoration" />
+        </button>
+        <button className="kpi kpi-interactive" type="button" onClick={onCustomers} aria-label="Клиенты с высоким риском. Открыть список клиентов">
+          <span className="kpi-top">
             <span>Высокий риск</span>
             <span className="metric-icon coral">
               <Users size={19} />
             </span>
-          </div>
+          </span>
           <strong>
             {data.risk_counts.high}
             <small>клиентов</small>
           </strong>
-          <div className="kpi-sub">Нуждаются в вашем внимании</div>
-          <button className="kpi-link" onClick={onCustomers}>
+          <span className="kpi-sub">Нуждаются в вашем внимании</span>
+          <span className="kpi-link">
             Посмотреть клиентов <ArrowRight size={15} />
-          </button>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
+          </span>
+        </button>
+        <button className="kpi kpi-interactive" type="button" onClick={onForecast} aria-label="Не покрыто балансом. Открыть график прогноза">
+          <span className="kpi-top">
             <span>Не покрыто балансом</span>
             <span className="metric-icon orange">
               <Activity size={19} />
             </span>
-          </div>
+          </span>
           <strong>{money(data.unfunded_eur)}</strong>
-          <div className="kpi-sub">
+          <span className="kpi-sub">
             Из {money(data.due_eur)} известных платежей
-          </div>
-          <div className="kpi-footnote">
+          </span>
+          <span className="kpi-footnote">
             <Info size={14} /> Без повторного учёта средств
-          </div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-top">
+          </span>
+        </button>
+        <button className="kpi kpi-interactive" type="button" onClick={onCustomers} aria-label="Клиенты в анализе. Открыть список клиентов">
+          <span className="kpi-top">
             <span>Клиентов в анализе</span>
             <span className="metric-icon neutral">
               <Users size={19} />
             </span>
-          </div>
+          </span>
           <strong>
             {data.customer_count}
             <small>всего</small>
           </strong>
-          <div className="kpi-sub">
+          <span className="kpi-sub">
             {data.service_count} услуг · {data.transaction_count} транзакций
-          </div>
-          <div className="kpi-footnote">
+          </span>
+          <span className="kpi-footnote">
             <span className="green-dot" />
             {data.scored_customer_count} с полной оценкой
-          </div>
-        </div>
+          </span>
+        </button>
       </section>
       {data.money_unknown_services > 0 && (
         <button className="quality-banner" onClick={onSource}>
@@ -1024,7 +1054,7 @@ function Overview({
           </span>
         </button>
       )}
-      <section className="chart-grid" id="forecast-chart">
+      <section className="chart-grid">
         <div className="panel distribution">
           <div className="panel-heading">
             <div>
@@ -1065,7 +1095,7 @@ function Overview({
             </div>
           </div>
         </div>
-        <div className="panel calendar">
+        <div className="panel calendar" id="forecast-chart">
           <div className="panel-heading">
             <div>
               <h2>Прогноз по дням</h2>

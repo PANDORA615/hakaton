@@ -3943,3 +3943,74 @@ html[data-theme="dark"] .drawer-score > div > span { color: var(--on-surface-var
 .customer-phone, .action-phone { display: inline-flex; width: fit-content; margin: 0 0 12px; color: var(--on-surface-variant); font-size: 12px; font-weight: 700; text-decoration-color: var(--orange); }
 .customer-phone:hover, .action-phone:hover { color: var(--orange); }
 .scenario-result p { color: var(--on-surface-variant); font-size: 12px; line-height: 1.5; }
+
+/* Interactive overview cards and accurate forecast anchor. */
+button.kpi { width: 100%; color: var(--ink); font: inherit; text-align: left; }
+button.kpi-main { color: #fff; }
+.kpi-interactive { cursor: pointer; transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
+.kpi-interactive:hover { transform: translateY(-3px); box-shadow: 0 12px 30px #0002; border-color: color-mix(in srgb, var(--orange) 55%, var(--border)); }
+.kpi-interactive:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+.kpi-interactive:active { transform: translateY(0); }
+#forecast-chart { scroll-margin-top: 88px; }
+
+/* The fox offers a short site answer or a guided tour on every input device. */
+.assistant-dock { position: fixed; right: 24px; bottom: max(24px, env(safe-area-inset-bottom)); z-index: 45; }
+.assistant-dock .assistant-launch { position: static; }
+.assistant-menu { position: absolute; right: 0; bottom: calc(100% - 1px); width: min(270px, calc(100vw - 28px)); display: grid; gap: 5px; padding: 8px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: 0 16px 46px #0005; animation: fox-menu-enter 180ms ease-out; }
+.assistant-menu button { display: flex; align-items: center; gap: 10px; min-height: 46px; width: 100%; padding: 10px 12px; border-radius: 11px; background: transparent; color: var(--ink); font-size: 12px; font-weight: 750; text-align: left; }
+.assistant-menu button:hover, .assistant-menu button:focus-visible { background: var(--surface-container-high); }
+.assistant-menu button svg { color: var(--orange); }
+@keyframes fox-menu-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.fox-question-backdrop { position: fixed; inset: 0; z-index: 130; display: flex; justify-content: flex-end; align-items: flex-end; padding: 24px; background: #0009; backdrop-filter: blur(3px); }
+.fox-question-dialog { width: min(100%, 430px); max-height: min(90dvh, 720px); overflow-y: auto; padding: 20px; border: 1px solid var(--border); border-radius: 22px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 60px #0006; }
+.fox-question-dialog header, .fox-question-dialog header > div { display: flex; align-items: center; gap: 12px; }
+.fox-question-dialog header { justify-content: space-between; }
+.fox-question-dialog header img { width: 62px; height: 62px; object-fit: contain; image-rendering: pixelated; }
+.fox-question-dialog header span, .welcome-card > span { color: var(--orange); font-size: 10px; font-weight: 850; letter-spacing: .18em; }
+.fox-question-dialog h2 { font-size: 20px; }
+.fox-question-dialog > p { margin: 15px 0; color: var(--on-surface-variant); font-size: 12px; line-height: 1.55; }
+.fox-question-dialog form { display: flex; gap: 8px; }
+.fox-question-dialog form input { flex: 1; min-width: 0; min-height: 46px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-container); color: var(--ink); }
+.fox-question-dialog form button { display: inline-flex; align-items: center; gap: 7px; padding: 10px 13px; }
+.fox-question-topics { display: grid; gap: 8px; margin-top: 18px; }
+.fox-question-topics button { min-height: 42px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-container); color: var(--ink); text-align: left; font-size: 12px; }
+.fox-question-topics button:hover { border-color: var(--orange); }
+.fox-question-answers { display: grid; gap: 10px; margin-top: 18px; }
+.fox-question-answers > span { color: var(--muted); font-size: 11px; font-weight: 800; }
+.fox-question-answers article { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-container); }
+.fox-question-answers h3 { font-size: 14px; }
+.fox-question-answers p, .fox-question-answers small { color: var(--on-surface-variant); font-size: 11px; line-height: 1.5; }
+.fox-question-answers article button { display: inline-flex; align-items: center; gap: 7px; width: fit-content; margin-top: 3px; padding: 0; background: transparent; color: var(--orange); font-size: 11px; font-weight: 800; }
+
+/* Short welcome transition after password or OIDC sign-in. */
+.welcome-overlay { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(14px); animation: welcome-enter 320ms ease-out; }
+.welcome-card { display: grid; justify-items: center; width: min(100%, 480px); padding: 32px 22px; border: 1px solid var(--border); border-radius: 30px; background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--orange) 18%, var(--surface)), var(--surface) 65%); box-shadow: 0 24px 70px #0004; color: var(--ink); text-align: center; }
+.welcome-card img { width: clamp(92px, 25vw, 130px); height: clamp(92px, 25vw, 130px); object-fit: contain; image-rendering: pixelated; animation: fox-celebrate 1.6s ease-in-out infinite; }
+.welcome-card h2 { margin: 16px 0 8px; font-size: clamp(25px, 6vw, 38px); line-height: 1.2; }
+.welcome-card h2 strong { color: var(--orange); overflow-wrap: anywhere; }
+.welcome-card p { color: var(--on-surface-variant); font-size: 12px; }
+.welcome-card > i { display: block; width: 80px; height: 4px; margin-top: 22px; border-radius: 99px; background: var(--orange); animation: welcome-progress 2.1s linear both; }
+@keyframes welcome-enter { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes welcome-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@media (max-width: 900px) {
+  .assistant-dock { right: 18px; bottom: max(18px, env(safe-area-inset-bottom)); }
+  .radar-page, .comparison-builder, .argument-grid { min-width: 0; }
+  .comparison-row > span { overflow-wrap: anywhere; }
+}
+@media (max-width: 600px) {
+  .assistant-dock { right: 14px; bottom: max(76px, calc(env(safe-area-inset-bottom) + 58px)); }
+  .assistant-dock .assistant-launch { min-width: 54px; justify-content: center; }
+  .fox-question-backdrop { padding: 0; }
+  .fox-question-dialog { width: 100%; max-height: 88dvh; padding: 20px 16px max(22px, env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; }
+  .fox-question-dialog form { flex-wrap: wrap; }
+  .fox-question-dialog form input { flex-basis: 100%; font-size: 16px; }
+  .fox-question-dialog form button { width: 100%; min-height: 44px; justify-content: center; }
+  .comparison-table { overflow-x: auto; overscroll-behavior-x: contain; }
+  .comparison-row { min-width: 410px; }
+  .radar-form { width: 100%; max-height: 92dvh; padding: 18px 15px max(22px, env(safe-area-inset-bottom)); }
+  .welcome-card { border-radius: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kpi-interactive, .assistant-menu, .welcome-overlay, .welcome-card img, .welcome-card > i { animation: none; transition: none; }
+}

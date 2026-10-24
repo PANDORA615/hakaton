@@ -100,6 +100,56 @@ export function HelpCenter({ language, onGo, onStartGuide }: { language: Languag
   </div>;
 }
 
+const FOX_TOPICS = [
+  { ru: 'Как найти клиента?', en: 'How do I find a customer?' },
+  { ru: 'Что означают платежи под риском?', en: 'What are payments at risk?' },
+  { ru: 'Где поменять тему?', en: 'Where can I change the theme?' },
+];
+const FOX_STOP_WORDS = new Set(['как', 'где', 'что', 'это', 'мне', 'the', 'how', 'where', 'can', 'with']);
+const FOX_ALIASES: Record<string, string> = {
+  'theme': 'appearance', 'тему': 'appearance', 'темы': 'appearance', 'цвет': 'appearance',
+  'платеж': 'chart', 'оплат': 'chart', 'payment': 'chart', 'chart': 'chart',
+  'очеред': 'actions', 'контакт': 'actions', 'queue': 'actions',
+  'вход': 'sign-in', 'парол': 'sign-in', 'login': 'sign-in',
+};
+
+function foxMatches(question: string, language: Language) {
+  const tokens = question.toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length > 2 && !FOX_STOP_WORDS.has(word)).map(word => word.slice(0, 5));
+  return HELP_ENTRIES.map(entry => {
+    const title = entry.title[language].toLocaleLowerCase();
+    const description = entry.description[language].toLocaleLowerCase();
+    const hint = entry.hint[language].toLocaleLowerCase();
+    const score = tokens.reduce((total, token) => total + (title.includes(token) ? 4 : 0) + (description.includes(token) ? 2 : 0) + (hint.includes(token) ? 1 : 0) + (Object.entries(FOX_ALIASES).some(([word, id]) => word.startsWith(token) && id === entry.id) ? 5 : 0), 0);
+    return { entry, score };
+  }).filter(result => result.score > 0).sort((a, b) => b.score - a.score).slice(0, 3);
+}
+
+export function FoxQuestionDialog({ language, onClose, onNavigate }: { language: Language; onClose: () => void; onNavigate: (target: HelpTarget) => void }) {
+  const [question, setQuestion] = useState('');
+  const [asked, setAsked] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const answers = useMemo(() => foxMatches(asked, language), [asked, language]);
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    input.current?.focus();
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') onCloseRef.current(); };
+    document.addEventListener('keydown', escape);
+    return () => { document.body.style.overflow = previous; document.removeEventListener('keydown', escape); };
+  }, []);
+  return <div className="fox-question-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="fox-question-dialog" role="dialog" aria-modal="true" aria-labelledby="fox-question-title">
+      <header><div><img src="/fox-thinking.png" alt="" aria-hidden="true" /><div><span>AÉZA RETENTION</span><h2 id="fox-question-title">{language === 'ru' ? 'Спросить у лисёнка' : 'Ask the fox'}</h2></div></div><button type="button" className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть' : 'Close'}><X size={20} /></button></header>
+      <p>{language === 'ru' ? 'Помогу найти функцию и объясню, как ей пользоваться.' : 'I can help you find a feature and explain how to use it.'}</p>
+      <form onSubmit={event => { event.preventDefault(); setAsked(question.trim()); }}><input ref={input} value={question} onChange={event => setQuestion(event.target.value)} maxLength={180} aria-label={language === 'ru' ? 'Вопрос лисёнку' : 'Question for the fox'} placeholder={language === 'ru' ? 'Например: где график платежей?' : 'For example: where is the payment chart?'} /><button className="primary" type="submit" disabled={!question.trim()}>{language === 'ru' ? 'Спросить' : 'Ask'} <ArrowRight size={16} /></button></form>
+      {!asked && <div className="fox-question-topics">{FOX_TOPICS.map(topic => <button type="button" key={topic.ru} onClick={() => { setQuestion(topic[language]); setAsked(topic[language]); }}>{topic[language]}</button>)}</div>}
+      {asked && <div className="fox-question-answers" aria-live="polite">{answers.length ? <><span>{language === 'ru' ? 'Вот что я нашёл' : 'Here is what I found'}</span>{answers.map(({ entry }) => <article key={entry.id}><h3>{entry.title[language]}</h3><p>{entry.description[language]}</p><small>{entry.hint[language]}</small><button type="button" onClick={() => onNavigate(entry.target)}>{language === 'ru' ? 'Перейти к разделу' : 'Open section'} <ArrowRight size={15} /></button></article>)}</> : <p>{language === 'ru' ? 'Пока не нашёл точного ответа. Попробуйте название раздела или откройте справочник.' : 'No exact match yet. Try a section name or open the site guide.'}</p>}</div>}
+    </section>
+  </div>;
+}
+
 export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { language: Language; step: number; onPrevious: () => void; onNext: () => void; onClose: () => void }) {
   const entry = GUIDE_ENTRIES[step];
   const foxState = GUIDE_FOX_STATES[step] || 'assistant';
