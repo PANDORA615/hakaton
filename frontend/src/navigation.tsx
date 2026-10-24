@@ -8,6 +8,7 @@ export type HelpTarget = AppView | 'search' | 'scenario' | 'horizon';
 type Language = 'ru' | 'en';
 type Copy = { ru: string; en: string };
 type Entry = { id: string; target: HelpTarget; title: Copy; description: Copy; hint: Copy };
+type Spotlight = { left: number; top: number; width: number; eyebrow: string; title: string; subtitle: string };
 const copy = (ru: string, en: string): Copy => ({ ru, en });
 
 export const HELP_ENTRIES: Entry[] = [
@@ -103,6 +104,7 @@ export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { l
   const last = step === GUIDE_ENTRIES.length - 1;
   const close = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
+  const [spotlight, setSpotlight] = useState<Spotlight | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
@@ -121,7 +123,45 @@ export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { l
     document.addEventListener('keydown', key);
     return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', key); };
   }, []);
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const heading = document.querySelector<HTMLElement>('.page-heading > div:first-child');
+        if (!heading) { setSpotlight(null); return; }
+        const rect = heading.getBoundingClientRect();
+        setSpotlight({
+          left: Math.max(12, rect.left - 14),
+          top: Math.max(12, rect.top - 12),
+          width: Math.min(Math.max(rect.width + 28, 250), window.innerWidth - 24),
+          eyebrow: heading.querySelector<HTMLElement>('.eyebrow')?.textContent || 'AÉZA RETENTION',
+          title: heading.querySelector<HTMLElement>('h1')?.textContent?.trim() || entry.title[language],
+          subtitle: heading.querySelector<HTMLElement>('p')?.textContent?.trim() || entry.description[language],
+        });
+      });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [step, language, entry.title, entry.description]);
   return <div className="guide-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    {spotlight && <div className="guide-spotlight" style={{ left: spotlight.left, top: spotlight.top, width: spotlight.width }} aria-hidden="true">
+      <div className="guide-spotlight-copy">
+        <span>{spotlight.eyebrow}</span>
+        <strong>{spotlight.title}</strong>
+        <small>{spotlight.subtitle}</small>
+      </div>
+      <svg className="guide-pointer" viewBox="0 0 190 90" role="presentation">
+        <defs><marker id="guide-arrow-head" markerWidth="9" markerHeight="9" refX="4" refY="4.5" orient="auto"><path d="M9 0 0 4.5 9 9" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></marker></defs>
+        <path d="M178 72C137 27 91 25 20 42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" markerEnd="url(#guide-arrow-head)" />
+      </svg>
+    </div>}
     <section ref={dialog} className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-description">
       <div className="guide-header"><span><Sparkles size={17} /> {language === 'ru' ? 'Помощник по сайту' : 'Site assistant'}</span><button ref={close} className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть помощника' : 'Close assistant'}><X size={18} /></button></div>
       <div className="guide-progress" aria-label={`${step + 1} / ${GUIDE_ENTRIES.length}`}>{GUIDE_ENTRIES.map((item, index) => <i key={item.id} className={index <= step ? 'active' : ''} />)}</div>
