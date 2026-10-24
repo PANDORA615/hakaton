@@ -1,0 +1,21 @@
+issuer: https://id.5-145-176-212.sslip.io
+storage:
+  type: sqlite3
+  config:
+    file: /var/dex/dex.db
+web:
+  http: 0.0.0.0:5556
+oauth2:
+  responseTypes: [code]
+enablePasswordDB: true
+staticClients:
+  - id: aeza-retention
+    name: Aéza Retention
+    secret: "{{ .Env.DEX_CLIENT_SECRET }}"
+    redirectURIs:
+      - https://app.5-145-176-212.sslip.io/api/v1/auth/oidc/callback
+staticPasswords:
+  - email: demo@aeza.local
+    hash: "{{ .Env.DEX_PASSWORD_HASH }}"
+    username: demo
+    userID: "{{ .Env.DEX_USER_ID }}"
