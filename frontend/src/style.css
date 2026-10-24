@@ -4014,3 +4014,33 @@ button.kpi-main { color: #fff; }
 @media (prefers-reduced-motion: reduce) {
   .kpi-interactive, .assistant-menu, .welcome-overlay, .welcome-card img, .welcome-card > i { animation: none; transition: none; }
 }
+/* Official tariff comparison */
+.radar-status { padding: 14px 18px; border-color: var(--orange); color: var(--ink); }
+.radar-picker-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 20px; }
+.radar-picker-side { display: grid; align-content: start; gap: 14px; min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-container); transition: border-color .3s ease, transform .3s ease, box-shadow .3s ease; }
+.radar-picker-side:hover { border-color: var(--orange); transform: translateY(-2px); box-shadow: 0 10px 30px #0001; }
+.radar-aeza-side { background: linear-gradient(145deg, rgba(255,122,0,.13), transparent 60%), var(--surface-container); }
+.radar-side-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 18px; }
+.radar-side-heading a { display: flex; gap: 5px; align-items: center; font-size: 12px; color: var(--orange); }
+.radar-picker-side label { display: grid; gap: 7px; font-size: 12px; color: var(--muted); font-weight: 700; }
+.radar-company-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.radar-company-tabs button { display: inline-flex; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; color: var(--ink); background: var(--surface); cursor: pointer; transition: background .25s ease, border-color .25s ease, transform .25s ease; }
+.radar-company-tabs button:hover { transform: translateY(-2px); border-color: var(--orange); }
+.radar-company-tabs button.selected { border-color: var(--orange); background: var(--primary-container); }
+.radar-company-tabs small { color: var(--muted); }
+.radar-freshness { color: var(--muted); }
+.radar-freshness.stale { color: var(--orange); }
+.radar-selected-plan { padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; animation: radar-plan-in .32s ease both; }
+.radar-selected-plan > div { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.radar-selected-plan > div span { color: var(--orange); font-size: 20px; font-weight: 800; }
+.radar-selected-plan small { font-size: 12px; color: var(--muted); }
+.radar-selected-plan p { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+.radar-source-list { display: grid; gap: 8px; margin-top: 16px; }
+.radar-source-list a { display: grid; grid-template-columns: minmax(100px, .3fr) 1fr auto; gap: 10px; align-items: center; color: var(--ink); text-decoration: none; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-container); }
+.radar-source-list a:hover { border-color: var(--orange); }
+.radar-source-list span { color: var(--muted); font-size: 12px; }
+.argument-grid { animation: radar-plan-in .32s ease both; }
+@keyframes radar-plan-in { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 800px) { .radar-picker-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .radar-source-list a { grid-template-columns: 1fr auto; } .radar-source-list span { grid-column: 1; } .radar-source-list svg { grid-column: 2; grid-row: 1 / 3; } }
+@media (prefers-reduced-motion: reduce) { .radar-picker-side, .radar-company-tabs button { transition: none; } .radar-selected-plan, .argument-grid { animation: none; } }

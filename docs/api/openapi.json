@@ -6,6 +6,30 @@
     "version": "0.8.0-beta"
   },
   "paths": {
+    "/api/v1/competitors/tariffs": {
+      "get": {
+        "tags": [
+          "competitors"
+        ],
+        "summary": "Competitor Tariffs",
+        "operationId": "competitor_tariffs_api_v1_competitors_tariffs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [

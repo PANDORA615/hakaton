@@ -1,0 +1,62 @@
+[
+  {
+    "id": "aeza-clt-1",
+    "name": "CLT-1 · Dedicated",
+    "price_rub": 849,
+    "cpu": 1,
+    "ram_gb": 2.0,
+    "disk_gb": 30,
+    "disk_type": "NVMe",
+    "cpu_class": "Dedicated",
+    "billing": "month",
+    "location": "Москва"
+  },
+  {
+    "id": "aeza-clt-2",
+    "name": "CLT-2 · Dedicated",
+    "price_rub": 1698,
+    "cpu": 2,
+    "ram_gb": 4.0,
+    "disk_gb": 60,
+    "disk_type": "NVMe",
+    "cpu_class": "Dedicated",
+    "billing": "month",
+    "location": "Москва"
+  },
+  {
+    "id": "aeza-clt-3",
+    "name": "CLT-3 · Dedicated",
+    "price_rub": 3394,
+    "cpu": 4,
+    "ram_gb": 8.0,
+    "disk_gb": 120,
+    "disk_type": "NVMe",
+    "cpu_class": "Dedicated",
+    "billing": "month",
+    "location": "Москва"
+  },
+  {
+    "id": "aeza-clt-4",
+    "name": "CLT-4 · Dedicated",
+    "price_rub": 6786,
+    "cpu": 8,
+    "ram_gb": 16.0,
+    "disk_gb": 240,
+    "disk_type": "NVMe",
+    "cpu_class": "Dedicated",
+    "billing": "month",
+    "location": "Москва"
+  },
+  {
+    "id": "aeza-clt-5",
+    "name": "CLT-5 · Dedicated",
+    "price_rub": 13572,
+    "cpu": 16,
+    "ram_gb": 32.0,
+    "disk_gb": 480,
+    "disk_type": "NVMe",
+    "cpu_class": "Dedicated",
+    "billing": "month",
+    "location": "Москва"
+  }
+]

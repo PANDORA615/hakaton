@@ -31,6 +31,7 @@ from . import db
 from .schemas import Snapshot
 from .store import Store, Conflict, ActionConflict
 from .fx import fx_cache
+from .tariffs import TariffCatalog
 
 COOKIE = 'aeza_session'
 logger = logging.getLogger(__name__)
@@ -147,6 +148,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             raise ValueError('Analysis time requires timezone')
         fixed = fixed.astimezone(timezone.utc)
     store = Store(engine, fixed)
+    tariff_catalog = TariffCatalog(engine)
     try:
         recalc_interval = float(os.environ.get('RECALC_INTERVAL_SECONDS', '60'))
     except ValueError as exc:
@@ -205,11 +207,24 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                 except asyncio.TimeoutError:
                     pass
         fx_task = asyncio.create_task(refresh_rates()) if not testing else None
+        async def refresh_tariffs():
+            while not stop.is_set():
+                try:
+                    await asyncio.to_thread(tariff_catalog.refresh_due)
+                except Exception:
+                    logger.exception('Tariff catalog refresh failed')
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=60 * 60)
+                except asyncio.TimeoutError:
+                    pass
+        tariff_task = asyncio.create_task(refresh_tariffs()) if not testing else None
         yield
         stop.set()
         await task
         if fx_task:
             await fx_task
+        if tariff_task:
+            await tariff_task
         engine.dispose()
 
     app = FastAPI(title='Aéza Retention API', version='0.8.0-beta', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -263,6 +278,10 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         with engine.connect() as conn:
             conn.execute(text('SELECT 1'))
         return {'status': 'ok'}
+
+    @app.get('/api/v1/competitors/tariffs', tags=['competitors'])
+    def competitor_tariffs(_=Depends(authorized)):
+        return tariff_catalog.catalog()
 
     @app.post('/api/v1/auth/login', tags=['auth'])
     def login(body: Login, response: Response, request: Request):

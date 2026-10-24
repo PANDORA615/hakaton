@@ -44,6 +44,9 @@ user_profiles = Table('user_profiles', metadata,
 sessions = Table('sessions', metadata, Column('token_hash', String, primary_key=True), Column('user_id', Integer, ForeignKey('users.id'), nullable=False),
                  Column('csrf', String, nullable=False), Column('expires', String, nullable=False),
                  Column('remember_me', Boolean, nullable=False, server_default=text('false')))
+competitor_tariffs = Table('competitor_tariffs', metadata,
+    Column('provider', String(40), primary_key=True), Column('plans', JSON, nullable=False),
+    Column('fetched_at', String), Column('attempted_at', String), Column('error', Text))
 marketing_actions = Table('marketing_actions', metadata,
     Column('id', ID_TYPE, Identity(), primary_key=True),
     Column('customer_id', BigInteger, nullable=False, unique=True),
