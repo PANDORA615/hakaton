@@ -46,10 +46,12 @@ import {
   Plus,
   Palette,
   Globe,
+  Radar,
 } from "lucide-react";
 import { api, ApiError, setCSRF, levels, money, date, Level, setDisplayPreferences, displayFromEuro, euroCentsFromDisplay, currencySymbol, formatReason, Currency, Language, FxRates } from "./api";
 import { installTranslations } from "./i18n";
 import { GlobalSearch, HelpCenter, GuideDialog, GUIDE_ENTRIES, AppView, HelpTarget } from './navigation';
+import { CompetitorRadar } from './competitorRadar';
 import "./style.css";
 
 const client = new QueryClient({
@@ -688,6 +690,7 @@ function App() {
             [
               ["overview", LayoutDashboard, "Обзор рисков"],
               ["customers", Users, "Клиенты"],
+              ["competitors", Radar, "Конкурентный радар"],
               ["settings", SlidersHorizontal, "Модель риска"],
               ["source", Database, "Источники данных"],
               ["actions", ClipboardList, "Работа с клиентами"],
@@ -743,6 +746,7 @@ function App() {
                 {
                   overview: "Обзор рисков",
                   customers: "Клиенты",
+                  competitors: "Конкурентный радар",
                   settings: "Модель риска",
                   source: "Источники данных",
                   actions: "Работа с клиентами",
@@ -794,6 +798,7 @@ function App() {
                   {
                     overview: "Обзор рисков",
                     customers: "Клиенты",
+                    competitors: "Конкурентный радар",
                     settings: "Модель риска",
                     source: "Источники данных",
                     actions: "Работа с клиентами",
@@ -809,6 +814,7 @@ function App() {
                   {
                     overview: "Вовремя заметить риск. Сохранить клиента.",
                     customers: "Приоритеты для вашей следующей коммуникации.",
+                    competitors: "Сравнение тарифов и аргументы, подтверждённые данными.",
                     settings: "Прозрачные правила. Управляемые коэффициенты.",
                     source: "Исходные данные и качество прогноза.",
                     actions: "Контакты и результаты работы с клиентами.",
@@ -865,6 +871,7 @@ function App() {
               <Loading />
             ))}
           {view === "customers" && <CustomerTable onSelect={openCustomer} sourceVersion={summary.data?.source_version} onCreated={(id) => { qc.invalidateQueries(); setToast(`Клиент #${id} добавлен в реестр`); openCustomer(id); }} />}
+          {view === "competitors" && <CompetitorRadar language={language} />}
           {view === "appearance" && <SitePreferences theme={theme} onTheme={setTheme} currency={currency} onCurrency={setCurrency} language={language} onLanguage={setLanguage} fx={fx.data} onRefresh={() => qc.invalidateQueries({ queryKey: ["fx-rates"] })} assistantEnabled={assistantEnabled} onAssistant={setAssistantEnabled} onStartGuide={startGuide} />}
           {view === "help" && <HelpCenter language={language} onGo={goToHelpTarget} onStartGuide={startGuide} />}
           {view === "settings" && <ModelSettings onSuccess={setToast} />}

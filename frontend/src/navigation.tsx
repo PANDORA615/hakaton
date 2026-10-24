@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Search, Sparkles, X } from 'lucide-react';
 import { api } from './api';
 
-export type AppView = 'overview' | 'customers' | 'settings' | 'source' | 'actions' | 'outcomes' | 'account' | 'appearance' | 'help';
+export type AppView = 'overview' | 'customers' | 'competitors' | 'settings' | 'source' | 'actions' | 'outcomes' | 'account' | 'appearance' | 'help';
 export type HelpTarget = AppView | 'search' | 'scenario' | 'horizon';
 type Language = 'ru' | 'en';
 type Copy = { ru: string; en: string };
@@ -14,6 +14,7 @@ const copy = (ru: string, en: string): Copy => ({ ru, en });
 export const HELP_ENTRIES: Entry[] = [
   { id: 'overview', target: 'overview', title: copy('Обзор рисков', 'Risk overview'), description: copy('Главные показатели, распределение риска и график будущих платежей.', 'Key metrics, risk distribution and the payment forecast.'), hint: copy('Начните здесь: проверьте число клиентов с высоким риском и сумму под риском.', 'Start here: review high-risk customers and the amount at risk.') },
   { id: 'customers', target: 'customers', title: copy('Клиенты', 'Customers'), description: copy('Рейтинг клиентов, причины оценки, услуги и карточки с расчётом «что если».', 'Customer ranking, scoring reasons, services and profiles with what-if calculations.'), hint: copy('Найдите клиента по email или ID; новый клиент добавляется кнопкой над таблицей.', 'Find a customer by email or ID; add one with the button above the table.') },
+  { id: 'competitors', target: 'competitors', title: copy('Конкурентный радар', 'Competitive radar'), description: copy('Сравнение облачных тарифов, преимуществ и подтверждённых аргументов.', 'Cloud plan comparison, advantages and evidence-backed talking points.'), hint: copy('Выберите тариф конкурента и сравните его с предложением Aéza.', 'Choose a competitor plan and compare it with an Aéza offer.') },
   { id: 'actions', target: 'actions', title: copy('Работа с клиентами', 'Customer work'), description: copy('Очередь контактов, заметки, статусы и итог общения.', 'Outreach queue, notes, statuses and outcomes.'), hint: copy('Откройте карточку клиента и нажмите «Добавить в работу».', 'Open a customer profile and choose “Add to work queue”.') },
   { id: 'outcomes', target: 'outcomes', title: copy('Результаты', 'Outcomes'), description: copy('Отмеченные продления и отказы после контакта.', 'Recorded renewals and non-renewals after outreach.'), hint: copy('Итог фиксируется вручную в разделе работы с клиентами.', 'Record outcomes manually in Customer work.') },
   { id: 'settings', target: 'settings', title: copy('Модель риска', 'Risk model'), description: copy('Веса признаков, пороги и параметры расчёта.', 'Feature weights, thresholds and calculation settings.'), hint: copy('После сохранения параметров оценки клиентов пересчитываются.', 'Customer scores are recalculated when settings are saved.') },
