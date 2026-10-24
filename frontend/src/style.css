@@ -3768,10 +3768,15 @@ body,
 .assistant-switch input:focus-visible + i { outline: 3px solid var(--orange); outline-offset: 3px; }
 .assistant-preference-controls .secondary { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; }
 .assistant-preference > small { color: var(--muted); line-height: 1.5; }
-.assistant-launch { position: fixed; right: 24px; bottom: max(24px, env(safe-area-inset-bottom)); z-index: 40; display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 10px 16px; border: 1px solid color-mix(in srgb, var(--orange) 55%, var(--border)); border-radius: 999px; background: var(--primary-container); color: var(--on-primary-container); box-shadow: 0 10px 30px #0003; font-size: 12px; font-weight: 800; }
-.assistant-launch:hover { transform: translateY(-2px); }
+.assistant-launch { position: fixed; right: 24px; bottom: max(24px, env(safe-area-inset-bottom)); z-index: 40; display: inline-flex; align-items: center; gap: 9px; min-height: 54px; padding: 6px 16px 6px 7px; border: 1px solid color-mix(in srgb, var(--orange) 55%, var(--border)); border-radius: 999px; background: var(--primary-container); color: var(--on-primary-container); box-shadow: 0 10px 30px #0003; font-size: 12px; font-weight: 800; }
+.assistant-launch img { width: 42px; height: 42px; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0 4px 5px #0004); }
+.assistant-launch:hover { transform: translateY(-3px); }
+.assistant-launch:hover img { animation: fox-wave 650ms ease-in-out; }
 .guide-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: flex-end; padding: 24px; background: #0009; backdrop-filter: blur(3px); }
-.guide-dialog { position: relative; z-index: 3; width: min(100%, 430px); max-height: min(90dvh, 650px); overflow-y: auto; padding: 22px; border: 1px solid var(--border); border-radius: 24px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 65px #0005; }
+.guide-dialog { position: relative; z-index: 3; width: min(100%, 430px); max-height: min(90dvh, 650px); overflow: visible; padding: 22px; border: 1px solid var(--border); border-radius: 24px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 65px #0005; }
+.guide-fox { position: absolute; left: 22px; top: -118px; width: 145px; height: 145px; object-fit: contain; image-rendering: pixelated; pointer-events: none; filter: drop-shadow(0 12px 13px #0008); animation: fox-float 2.6s ease-in-out infinite; }
+.guide-fox-1 { rotate: -2deg; }
+.guide-fox-2 { scale: -1 1; }
 .guide-spotlight { position: fixed; z-index: 2; pointer-events: none; padding: 12px 14px; border: 2px solid #42e52f; border-radius: 15px; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 5px #42e52f26, 0 0 34px #42e52f70, 0 14px 35px #0005; animation: guide-spotlight-in 240ms ease-out; }
 .guide-spotlight-copy { display: grid; gap: 4px; }
 .guide-spotlight-copy > span { color: #26bd1c; font-size: 9px; font-weight: 900; letter-spacing: 2.1px; }
@@ -3780,8 +3785,11 @@ body,
 .guide-pointer { position: absolute; left: calc(100% + 18px); top: 50%; display: grid; place-items: center; width: clamp(72px, 9vw, 118px); height: 54px; color: #42e52f; transform: translateY(-50%); filter: drop-shadow(0 0 5px #42e52f80) drop-shadow(0 3px 4px #0008); }
 .guide-pointer svg { width: 100%; height: 100%; stroke-width: 2.4; }
 @keyframes guide-spotlight-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes fox-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -7px; } }
+@keyframes fox-wave { 0%, 100% { transform: rotate(0); } 35% { transform: rotate(-8deg) scale(1.05); } 70% { transform: rotate(6deg); } }
 .guide-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .guide-header span { display: inline-flex; align-items: center; gap: 8px; color: var(--orange); font-size: 12px; font-weight: 800; }
+.guide-header span img { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; }
 .guide-progress { display: flex; gap: 5px; margin: 22px 0 14px; }
 .guide-progress i { flex: 1; height: 4px; border-radius: 5px; background: var(--surface-container-high); }
 .guide-progress i.active { background: var(--orange); }
@@ -3803,9 +3811,11 @@ body,
   .global-search-box input { font-size: 16px; }
   .topbar .global-search-box { left: 12px; right: 12px; }
   .assistant-launch { right: 14px; bottom: max(76px, calc(env(safe-area-inset-bottom) + 58px)); padding: 10px 12px; }
+  .assistant-launch img { width: 38px; height: 38px; }
   .assistant-launch span { display: none; }
   .guide-backdrop { align-items: flex-end; justify-content: center; padding: 0; }
-  .guide-dialog { width: 100%; max-height: 86dvh; padding: 20px 18px max(22px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; }
+  .guide-dialog { width: 100%; max-height: 86dvh; overflow-y: auto; padding: 20px 18px max(22px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; }
+  .guide-fox { display: none; }
   .guide-spotlight { left: 12px !important; width: calc(100vw - 24px) !important; padding: 10px 12px; }
   .guide-spotlight-copy > strong { font-size: clamp(22px, 7vw, 27px); }
   .guide-pointer { left: auto; right: 18px; top: calc(100% + 7px); width: 62px; height: 62px; transform: rotate(90deg); transform-origin: center; }
@@ -3819,6 +3829,7 @@ body,
 
 @media (prefers-reduced-motion: reduce) {
   .guide-spotlight { animation: none; }
+  .guide-fox, .assistant-launch:hover img { animation: none; }
 }
 
 /* Warm light surfaces and a theme-safe customer card. */

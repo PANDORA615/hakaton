@@ -887,7 +887,7 @@ function App() {
       {customerId !== null && (
         <CustomerDrawer key={customerId} id={customerId} currency={currency} fx={fx.data} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
       )}
-      {assistantEnabled && guideStep === null && <button className="assistant-launch" onClick={startGuide} aria-label={language === 'ru' ? 'Открыть помощника' : 'Open assistant'}><Sparkles size={18} /><span>{language === 'ru' ? 'Помощник' : 'Assistant'}</span></button>}
+      {assistantEnabled && guideStep === null && <button className="assistant-launch" onClick={startGuide} aria-label={language === 'ru' ? 'Позвать лисёнка Aéza' : 'Call Aéza fox'}><img src="/fox-assistant.png" alt="" aria-hidden="true" /><span>{language === 'ru' ? 'Лисёнок Aéza' : 'Aéza fox'}</span></button>}
       {guideStep !== null && <GuideDialog language={language} step={guideStep} onPrevious={() => changeGuideStep(guideStep - 1)} onNext={() => changeGuideStep(guideStep + 1)} onClose={closeGuide} />}
       {toast && (
         <div className="toast" role="status">

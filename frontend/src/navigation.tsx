@@ -160,7 +160,8 @@ export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { l
       <div className="guide-pointer"><ArrowLeft aria-hidden="true" /></div>
     </div>}
     <section ref={dialog} className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-description">
-      <div className="guide-header"><span><Sparkles size={17} /> {language === 'ru' ? 'Помощник по сайту' : 'Site assistant'}</span><button ref={close} className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть помощника' : 'Close assistant'}><X size={18} /></button></div>
+      <img className={`guide-fox guide-fox-${step % 3}`} src="/fox-assistant.png" alt="" aria-hidden="true" />
+      <div className="guide-header"><span><img src="/fox-assistant.png" alt="" aria-hidden="true" /> {language === 'ru' ? 'Лисёнок Aéza' : 'Aéza fox'}</span><button ref={close} className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть помощника' : 'Close assistant'}><X size={18} /></button></div>
       <div className="guide-progress" aria-label={`${step + 1} / ${GUIDE_ENTRIES.length}`}>{GUIDE_ENTRIES.map((item, index) => <i key={item.id} className={index <= step ? 'active' : ''} />)}</div>
       <small>{language === 'ru' ? `Шаг ${step + 1} из ${GUIDE_ENTRIES.length}` : `Step ${step + 1} of ${GUIDE_ENTRIES.length}`}</small>
       <h2 id="guide-title">{entry.title[language]}</h2>
