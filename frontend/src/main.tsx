@@ -42,7 +42,7 @@ import {
   Monitor,
   ClipboardList,
 } from "lucide-react";
-import { api, ApiError, setCSRF, levels, money, date, Level } from "./api";
+import { api, ApiError, setCSRF, levels, money, date, Level, RUB_PER_EUR, rublesFromEuro, euroCentsFromRubles } from "./api";
 import "./style.css";
 
 const client = new QueryClient({
@@ -816,6 +816,7 @@ function Overview({
     .join(",");
   return (
     <>
+      <p className="currency-note">Суммы в рублях · курс ЦБ РФ на 24.10.2026: €1 = {RUB_PER_EUR.toLocaleString("ru-RU", { minimumFractionDigits: 4 })} ₽</p>
       <section className="kpi-grid">
         <div className="kpi kpi-main">
           <div className="kpi-top">
@@ -947,7 +948,7 @@ function Overview({
           <div className="panel-heading">
             <div>
               <h2>Прогноз по дням</h2>
-              <p>Платежи и сценарная сумма под риском, EUR</p>
+              <p>Платежи и сценарная сумма под риском, ₽</p>
             </div>
             <span className="chart-key">
               <i />
@@ -960,7 +961,7 @@ function Overview({
             <div className="chart-gridlines">
               <span>{money(max)}</span>
               <span>{money(max / 2)}</span>
-              <span>0 €</span>
+              <span>0 ₽</span>
             </div>
             <div className="bars">
               {calendar.map((d: any) => (
@@ -1333,7 +1334,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
   const [scenarioPending, setScenarioPending] = useState(false);
   function scenarioPayload() {
     const payload: Record<string, number | boolean> = {};
-    if (scenarioBalance !== "") payload.balance_cents = Math.round(Number(scenarioBalance) * 100);
+    if (scenarioBalance !== "") payload.balance_cents = euroCentsFromRubles(Number(scenarioBalance));
     if (scenarioService) {
       payload.service_id = Number(scenarioService);
       payload.auto_prolong = scenarioAuto;
@@ -1474,9 +1475,10 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
               <h3>Что если?</h3>
               <p>Расчёт без изменения данных и настроек.</p>
               <label>
-                Основной баланс, EUR
-                <input type="number" min="0" step="0.01" value={scenarioBalance} placeholder={String(c.balance / 100)} onChange={(event) => setScenarioBalance(event.target.value)} />
+                Основной баланс, ₽
+                <input type="number" min="0" step="0.01" value={scenarioBalance} placeholder={rublesFromEuro(c.balance / 100).toFixed(2)} onChange={(event) => setScenarioBalance(event.target.value)} />
               </label>
+              <small>Демоданные пересчитаны по курсу ЦБ РФ на 24.10.2026: €1 = {RUB_PER_EUR.toLocaleString("ru-RU", { minimumFractionDigits: 4 })} ₽.</small>
               <label>
                 Услуга
                 <select value={scenarioService} onChange={(event) => {

@@ -52,12 +52,17 @@ export const levels: Record<Level, string> = {
   low: "Низкий",
   unknown: "Нет оценки",
 };
-export const money = (n: number) =>
+// The source snapshot stores euro cents. Keep a fixed rate so historical
+// calculations and what-if inputs use the same conversion.
+export const RUB_PER_EUR = 90.2429;
+export const rublesFromEuro = (euros: number) => Math.round(euros * RUB_PER_EUR * 100) / 100;
+export const euroCentsFromRubles = (rubles: number) => Math.round((rubles / RUB_PER_EUR) * 100);
+export const money = (euros: number) =>
   new Intl.NumberFormat("ru-RU", {
     style: "currency",
-    currency: "EUR",
+    currency: "RUB",
     maximumFractionDigits: 2,
-  }).format(n);
+  }).format(rublesFromEuro(euros));
 export const date = (s: string) =>
   new Date(s).toLocaleString("ru-RU", {
     timeZone: "Europe/Moscow",

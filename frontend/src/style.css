@@ -473,6 +473,11 @@ nav button:hover {
   gap: 15px;
   margin-bottom: 20px;
 }
+.currency-note {
+  color: var(--muted);
+  font-size: 11px;
+  margin: -5px 0 15px;
+}
 .kpi {
   background: white;
   border: 1px solid var(--border);

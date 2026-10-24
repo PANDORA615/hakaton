@@ -268,6 +268,7 @@ def test_money_formula_63_eur(source):
     result = score_service(service, [10000,8000], config, NOW)
     assert result['score'] == 70
     assert result['loss_eur'] == 63
+    assert any('7219.43 ₽' in reason['text'] for reason in result['reasons'])
 
 
 def test_shared_balance_and_bonus(source):

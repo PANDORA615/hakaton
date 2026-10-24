@@ -19,7 +19,8 @@ def no_autoprolong(service, due, unfunded, settings, now):
 
 
 def funding_gap(service, due, unfunded, settings, now):
-    return unfunded / due if due else 0, f'Не покрыто балансом: {unfunded/100:.2f} EUR'
+    rubles = unfunded / 100 * 90.2429
+    return unfunded / due if due else 0, f'Не покрыто балансом: {rubles:.2f} ₽'
 
 
 def payment_wait(service, due, unfunded, settings, now):
