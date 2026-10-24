@@ -1,0 +1,135 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Search, Sparkles, X } from 'lucide-react';
+import { api } from './api';
+
+export type AppView = 'overview' | 'customers' | 'settings' | 'source' | 'actions' | 'outcomes' | 'account' | 'appearance' | 'help';
+export type HelpTarget = AppView | 'search' | 'scenario' | 'horizon';
+type Language = 'ru' | 'en';
+type Copy = { ru: string; en: string };
+type Entry = { id: string; target: HelpTarget; title: Copy; description: Copy; hint: Copy };
+const copy = (ru: string, en: string): Copy => ({ ru, en });
+
+export const HELP_ENTRIES: Entry[] = [
+  { id: 'overview', target: 'overview', title: copy('Обзор рисков', 'Risk overview'), description: copy('Главные показатели, распределение риска и график будущих платежей.', 'Key metrics, risk distribution and the payment forecast.'), hint: copy('Начните здесь: проверьте число клиентов с высоким риском и сумму под риском.', 'Start here: review high-risk customers and the amount at risk.') },
+  { id: 'customers', target: 'customers', title: copy('Клиенты', 'Customers'), description: copy('Рейтинг клиентов, причины оценки, услуги и карточки с расчётом «что если».', 'Customer ranking, scoring reasons, services and profiles with what-if calculations.'), hint: copy('Найдите клиента по email или ID; новый клиент добавляется кнопкой над таблицей.', 'Find a customer by email or ID; add one with the button above the table.') },
+  { id: 'actions', target: 'actions', title: copy('Работа с клиентами', 'Customer work'), description: copy('Очередь контактов, заметки, статусы и итог общения.', 'Outreach queue, notes, statuses and outcomes.'), hint: copy('Откройте карточку клиента и нажмите «Добавить в работу».', 'Open a customer profile and choose “Add to work queue”.') },
+  { id: 'outcomes', target: 'outcomes', title: copy('Результаты', 'Outcomes'), description: copy('Отмеченные продления и отказы после контакта.', 'Recorded renewals and non-renewals after outreach.'), hint: copy('Итог фиксируется вручную в разделе работы с клиентами.', 'Record outcomes manually in Customer work.') },
+  { id: 'settings', target: 'settings', title: copy('Модель риска', 'Risk model'), description: copy('Веса признаков, пороги и параметры расчёта.', 'Feature weights, thresholds and calculation settings.'), hint: copy('После сохранения параметров оценки клиентов пересчитываются.', 'Customer scores are recalculated when settings are saved.') },
+  { id: 'source', target: 'source', title: copy('Источники данных', 'Data sources'), description: copy('Импорт и экспорт снимка, демосценарии и проверка качества данных.', 'Snapshot import and export, demo scenarios and data quality checks.'), hint: copy('Импорт заменяет текущий реестр целиком; перед ним экспортируйте снимок.', 'Import replaces the entire registry; export a snapshot first.') },
+  { id: 'appearance', target: 'appearance', title: copy('Настройки сайта', 'Site settings'), description: copy('Тема, язык, валюта и включение помощника.', 'Theme, language, currency and guide preferences.'), hint: copy('Настройки интерфейса сохраняются на этом устройстве.', 'Display preferences are saved on this device.') },
+  { id: 'account', target: 'account', title: copy('Настройки аккаунта', 'Account settings'), description: copy('Имя, email, пароль, сеансы и способы входа.', 'Name, email, password, sessions and sign-in methods.'), hint: copy('Открываются через меню профиля справа сверху.', 'Open this section from the profile menu at the top right.') },
+  { id: 'search', target: 'search', title: copy('Поиск сверху', 'Top search'), description: copy('Быстрый переход к разделам и поиск клиентов по email или ID.', 'Jump to sections and find customers by email or ID.'), hint: copy('Нажмите поле по центру верхней панели; на телефоне — значок лупы.', 'Use the field in the center of the top bar; on mobile, tap the search icon.') },
+  { id: 'chart', target: 'overview', title: copy('График платежей', 'Payment chart'), description: copy('Платежи по дням и сценарная сумма под риском на выбранном горизонте.', 'Daily payments and the scenario amount at risk within the selected horizon.'), hint: copy('На обзоре нажмите «К графику» или прокрутите страницу вниз.', 'On the overview, choose “View chart” or scroll down.') },
+  { id: 'scenario', target: 'scenario', title: copy('Что если?', 'What if?'), description: copy('Пробный пересчёт с другим балансом или автопродлением без изменения данных.', 'Try another balance or auto-renewal value without changing source data.'), hint: copy('Откройте карточку клиента или кнопку «Что если?» в обзоре.', 'Open a customer profile or use “What if?” in the overview.') },
+  { id: 'horizon', target: 'horizon', title: copy('Горизонт анализа', 'Analysis horizon'), description: copy('Окно прогноза на 1, 7, 14 или 30 дней.', 'Forecast window of 1, 7, 14 or 30 days.'), hint: copy('Выбор находится вверху каждого раздела и пересчитывает оценки.', 'The selector appears at the top of each section and recalculates scores.') },
+  { id: 'sign-in', target: 'account', title: copy('Вход и безопасность', 'Sign-in and security'), description: copy('Пароль, единый вход, запоминание сеанса и завершение других сеансов.', 'Password, single sign-on, remembered sessions and ending other sessions.'), hint: copy('Выход находится в меню профиля; настройки безопасности — в аккаунте.', 'Sign out from the profile menu; manage security in Account settings.') },
+];
+
+export const GUIDE_ENTRIES = ['overview', 'customers', 'search', 'actions', 'settings', 'source', 'outcomes', 'appearance']
+  .map(id => HELP_ENTRIES.find(entry => entry.id === id)!);
+
+export function GlobalSearch({ language, open, onOpenChange, onNavigate, onCustomer }: {
+  language: Language; open: boolean; onOpenChange: (open: boolean) => void;
+  onNavigate: (target: HelpTarget) => void; onCustomer: (id: number) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [active, setActive] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { const timer = window.setTimeout(() => setDebounced(query.trim()), 250); return () => window.clearTimeout(timer); }, [query]);
+  useEffect(() => { if (open) input.current?.focus(); }, [open]);
+  useEffect(() => {
+    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) onOpenChange(false); };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [onOpenChange]);
+  const matches = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase();
+    return HELP_ENTRIES.filter(item => !term || item.title.ru.toLocaleLowerCase().includes(term) || item.title.en.toLocaleLowerCase().includes(term) || item.description.ru.toLocaleLowerCase().includes(term) || item.description.en.toLocaleLowerCase().includes(term)).slice(0, term ? 4 : 5);
+  }, [query, language]);
+  const customers = useQuery({
+    queryKey: ['global-search', debounced],
+    queryFn: () => api(`/customers?search=${encodeURIComponent(debounced)}&page_size=5`),
+    enabled: open && debounced.length > 0,
+    staleTime: 10_000,
+  });
+  const customerItems = debounced === query.trim() ? (customers.data?.items || []) : [];
+  const options = [...matches.map(item => ({ kind: 'section' as const, id: item.id, label: item.title[language], target: item.target })),
+    ...customerItems.map((item: any) => ({ kind: 'customer' as const, id: String(item.id), label: item.email, target: item.id as number }))];
+  const choose = (option: typeof options[number]) => {
+    onOpenChange(false); setQuery(''); setActive(0);
+    if (option.kind === 'customer') onCustomer(option.target as number);
+    else onNavigate(option.target as HelpTarget);
+  };
+  return <div className={`topbar-search ${open ? 'is-open' : ''}`} ref={root}>
+    <button className="global-search-trigger icon-btn" type="button" aria-label={language === 'ru' ? 'Открыть поиск' : 'Open search'} aria-expanded={open} onClick={() => onOpenChange(!open)}><Search size={19} /></button>
+    <div className="global-search-box">
+      <Search size={17} aria-hidden="true" />
+      <input ref={input} value={query} onFocus={() => onOpenChange(true)} onChange={event => { setQuery(event.target.value); setActive(0); }}
+        onKeyDown={event => {
+          if (event.key === 'Escape') { onOpenChange(false); input.current?.blur(); }
+          if (event.key === 'ArrowDown') { event.preventDefault(); setActive(index => Math.min(index + 1, Math.max(0, options.length - 1))); }
+          if (event.key === 'ArrowUp') { event.preventDefault(); setActive(index => Math.max(0, index - 1)); }
+          if (event.key === 'Enter' && options[active]) { event.preventDefault(); choose(options[active]); }
+        }}
+        role="combobox" aria-expanded={open} aria-controls="global-search-results" aria-activedescendant={open && options[active] ? `global-result-${active}` : undefined}
+        aria-label={language === 'ru' ? 'Поиск по сайту и клиентам' : 'Search site and customers'}
+        placeholder={language === 'ru' ? 'Раздел, email или ID клиента' : 'Section, email or customer ID'} />
+      {query && <button className="global-search-clear icon-btn" type="button" aria-label={language === 'ru' ? 'Очистить поиск' : 'Clear search'} onClick={() => { setQuery(''); input.current?.focus(); }}><X size={15} /></button>}
+      {open && <div className="global-search-results" id="global-search-results" role="listbox">
+        {options.map((option, index) => <button id={`global-result-${index}`} key={`${option.kind}-${option.id}`} type="button" role="option" aria-selected={index === active}
+          className={index === active ? 'selected' : ''} onMouseDown={event => event.preventDefault()} onClick={() => choose(option)}>
+          {option.kind === 'section' ? <BookOpen size={16} /> : <Search size={16} />}<span><strong>{option.label}</strong>{option.kind === 'customer' && <small>ID #{option.id}</small>}</span><ChevronRight size={14} />
+        </button>)}
+        {query.trim() && !options.length && !customers.isFetching && <p>{language === 'ru' ? 'Совпадений нет' : 'No matches'}</p>}
+        {customers.isFetching && <p>{language === 'ru' ? 'Ищем клиентов…' : 'Searching customers…'}</p>}
+      </div>}
+    </div>
+  </div>;
+}
+
+export function HelpCenter({ language, onGo, onStartGuide }: { language: Language; onGo: (target: HelpTarget) => void; onStartGuide: () => void }) {
+  return <div className="help-center">
+    <section className="panel help-intro"><BookOpen size={25} /><div><h2>{language === 'ru' ? 'Справочник по сайту' : 'Site guide'}</h2><p>{language === 'ru' ? 'Выберите тему или откройте нужный раздел. Помощник проведёт вас по основным шагам.' : 'Choose a topic or open a section. The assistant can walk you through the basics.'}</p></div><button className="secondary" onClick={onStartGuide}><Sparkles size={16} />{language === 'ru' ? 'Запустить помощника' : 'Start assistant'}</button></section>
+    <div className="help-grid">{HELP_ENTRIES.map(entry => <article className="panel help-card" key={entry.id}><h3>{entry.title[language]}</h3><p>{entry.description[language]}</p><small>{entry.hint[language]}</small><button onClick={() => onGo(entry.target)}>{language === 'ru' ? 'Перейти' : 'Open'} <ArrowRight size={15} /></button></article>)}</div>
+  </div>;
+}
+
+export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { language: Language; step: number; onPrevious: () => void; onNext: () => void; onClose: () => void }) {
+  const entry = GUIDE_ENTRIES[step];
+  const first = step === 0;
+  const last = step === GUIDE_ENTRIES.length - 1;
+  const close = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    close.current?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCloseRef.current();
+      if (event.key === 'Tab') {
+        const buttons = dialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
+        if (!buttons?.length) return;
+        if (event.shiftKey && document.activeElement === buttons[0]) { event.preventDefault(); buttons[buttons.length - 1].focus(); }
+        else if (!event.shiftKey && document.activeElement === buttons[buttons.length - 1]) { event.preventDefault(); buttons[0].focus(); }
+      }
+    };
+    document.addEventListener('keydown', key);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', key); };
+  }, []);
+  return <div className="guide-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <section ref={dialog} className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-description">
+      <div className="guide-header"><span><Sparkles size={17} /> {language === 'ru' ? 'Помощник по сайту' : 'Site assistant'}</span><button ref={close} className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть помощника' : 'Close assistant'}><X size={18} /></button></div>
+      <div className="guide-progress" aria-label={`${step + 1} / ${GUIDE_ENTRIES.length}`}>{GUIDE_ENTRIES.map((item, index) => <i key={item.id} className={index <= step ? 'active' : ''} />)}</div>
+      <small>{language === 'ru' ? `Шаг ${step + 1} из ${GUIDE_ENTRIES.length}` : `Step ${step + 1} of ${GUIDE_ENTRIES.length}`}</small>
+      <h2 id="guide-title">{entry.title[language]}</h2>
+      <p id="guide-description">{entry.description[language]}</p>
+      <div className="guide-tip"><Check size={16} /><span>{entry.hint[language]}</span></div>
+      <div className="guide-actions"><button className="secondary" onClick={first ? onClose : onPrevious}><ArrowLeft size={15} />{first ? (language === 'ru' ? 'Пропустить' : 'Skip') : (language === 'ru' ? 'Назад' : 'Back')}</button><button className="primary" onClick={onNext}>{last ? (language === 'ru' ? 'Готово' : 'Done') : (language === 'ru' ? 'Далее' : 'Next')}<ArrowRight size={15} /></button></div>
+    </section>
+  </div>;
+}

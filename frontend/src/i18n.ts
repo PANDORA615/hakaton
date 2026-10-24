@@ -5,6 +5,7 @@ const pairs: Record<string, string> = {
   'Модель риска': 'Risk model', 'Источники данных': 'Data sources', 'Работа с клиентами': 'Customer work',
   'Результаты': 'Outcomes', 'Аккаунт': 'Account', 'Настройки аккаунта': 'Account settings',
   'Настройки сайта': 'Site settings', 'Выйти': 'Sign out', 'Меню аккаунта': 'Account menu',
+  'Справочник': 'Guide', 'Ответы по каждому разделу и быстрые переходы.': 'Help for every section and quick links.',
   'Вовремя заметить риск. Сохранить клиента.': 'Spot risk in time. Keep the customer.',
   'Приоритеты для вашей следующей коммуникации.': 'Priorities for your next outreach.',
   'Прозрачные правила. Управляемые коэффициенты.': 'Transparent rules. Adjustable weights.',

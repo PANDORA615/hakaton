@@ -41,12 +41,15 @@ import {
   Sun,
   Monitor,
   ClipboardList,
+  BookOpen,
+  Sparkles,
   Plus,
   Palette,
   Globe,
 } from "lucide-react";
 import { api, ApiError, setCSRF, levels, money, date, Level, setDisplayPreferences, displayFromEuro, euroCentsFromDisplay, currencySymbol, formatReason, Currency, Language, FxRates } from "./api";
 import { installTranslations } from "./i18n";
+import { GlobalSearch, HelpCenter, GuideDialog, GUIDE_ENTRIES, AppView, HelpTarget } from './navigation';
 import "./style.css";
 
 const client = new QueryClient({
@@ -61,7 +64,7 @@ const levelColors: Record<Level, string> = {
   low: "#43a887",
   unknown: "#a8adb7",
 };
-type View = "overview" | "customers" | "settings" | "source" | "actions" | "outcomes" | "account" | "appearance";
+type View = AppView;
 type Theme = "system" | "light" | "dark";
 
 function initialTheme(): Theme {
@@ -427,6 +430,8 @@ function App() {
     [connection, setConnection] = useState("Подключение…"),
     [mobile, setMobile] = useState(false),
     [profileMenuOpen, setProfileMenuOpen] = useState(false),
+    [searchOpen, setSearchOpen] = useState(false),
+    [guideStep, setGuideStep] = useState<number | null>(null),
     [horizonPending, setHorizonPending] = useState(false),
     [toast, setToast] = useState("");
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -435,6 +440,7 @@ function App() {
     return saved === "USD" || saved === "EUR" ? saved : "RUB";
   });
   const [language, setLanguage] = useState<Language>(() => localStorage.getItem("aeza-language") === "en" ? "en" : "ru");
+  const [assistantEnabled, setAssistantEnabled] = useState(() => localStorage.getItem('aeza-assistant-enabled') !== 'false');
   const [focusScenario, setFocusScenario] = useState(false);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
@@ -530,6 +536,17 @@ function App() {
     document.documentElement.lang = language;
   }, [currency, language]);
   useEffect(() => installTranslations(language), [language]);
+  useEffect(() => {
+    localStorage.setItem('aeza-assistant-enabled', String(assistantEnabled));
+    if (!assistantEnabled) setGuideStep(null);
+  }, [assistantEnabled]);
+  useEffect(() => {
+    if (user && assistantEnabled && !localStorage.getItem('aeza-assistant-seen')) {
+      setGuideStep(0);
+      setView('overview');
+    }
+  }, [user, assistantEnabled]);
+  useEffect(() => { if (!user) setGuideStep(null); }, [user]);
   const accountSummary = useQuery({
     queryKey: ["account"],
     queryFn: () => api("/account"),
@@ -550,6 +567,34 @@ function App() {
     setView(v);
     setMobile(false);
     setProfileMenuOpen(false);
+    setSearchOpen(false);
+  }
+  function goToHelpTarget(target: HelpTarget) {
+    if (target === 'search') { setSearchOpen(true); return; }
+    if (target === 'scenario') { openScenario(); return; }
+    if (target === 'horizon') {
+      navigate('overview');
+      window.setTimeout(() => document.querySelector<HTMLElement>('.horizon-filter-trigger')?.focus(), 0);
+      return;
+    }
+    navigate(target);
+  }
+  function startGuide() {
+    setAssistantEnabled(true);
+    setGuideStep(0);
+    navigate('overview');
+  }
+  function closeGuide() {
+    localStorage.setItem('aeza-assistant-seen', '1');
+    setGuideStep(null);
+  }
+  function changeGuideStep(next: number) {
+    if (next >= GUIDE_ENTRIES.length) { closeGuide(); return; }
+    const index = Math.max(0, next);
+    setGuideStep(index);
+    const target = GUIDE_ENTRIES[index].target;
+    if (target === 'search') { navigate('customers'); setSearchOpen(true); }
+    else goToHelpTarget(target);
   }
   useEffect(() => {
     if (!mobile) return;
@@ -704,10 +749,12 @@ function App() {
                   outcomes: "Результаты",
                   account: "Аккаунт",
                   appearance: "Настройки сайта",
+                  help: "Справочник",
                 }[view]
               }
             </strong>
           </div>
+          <GlobalSearch language={language} open={searchOpen} onOpenChange={setSearchOpen} onNavigate={goToHelpTarget} onCustomer={(id) => { navigate('customers'); openCustomer(id); }} />
           <div className="topbar-right">
             <span
               className={
@@ -730,6 +777,7 @@ function App() {
                 <div className="profile-menu-user"><strong>{accountSummary.data?.display_name || "Администратор"}</strong><span>{user.login}</span></div>
                 <button role="menuitem" onClick={() => navigate("account")}><Settings2 size={17} /> Настройки аккаунта</button>
                 <button role="menuitem" onClick={() => navigate("appearance")}><Palette size={17} /> Настройки сайта</button>
+                <button role="menuitem" onClick={() => navigate("help")}><BookOpen size={17} /> Справочник</button>
                 <button role="menuitem" onClick={() => navigate("settings")}><SlidersHorizontal size={17} /> Модель риска</button>
                 <button role="menuitem" onClick={() => { setProfileMenuOpen(false); logout(); }}><LogOut size={17} /> Выйти</button>
               </div>}
@@ -752,6 +800,7 @@ function App() {
                     outcomes: "Результаты",
                     account: "Аккаунт",
                     appearance: "Настройки сайта",
+                    help: "Справочник",
                   }[view]
                 }
               </h1>
@@ -766,6 +815,7 @@ function App() {
                     outcomes: "Фактически отмеченные продления после контакта.",
                     account: "Профиль, безопасность и способы входа.",
                     appearance: "Тема, язык и валюта отображения.",
+                    help: "Ответы по каждому разделу и быстрые переходы.",
                   }[view]
                 }
               </p>
@@ -815,7 +865,8 @@ function App() {
               <Loading />
             ))}
           {view === "customers" && <CustomerTable onSelect={openCustomer} sourceVersion={summary.data?.source_version} onCreated={(id) => { qc.invalidateQueries(); setToast(`Клиент #${id} добавлен в реестр`); openCustomer(id); }} />}
-          {view === "appearance" && <SitePreferences theme={theme} onTheme={setTheme} currency={currency} onCurrency={setCurrency} language={language} onLanguage={setLanguage} fx={fx.data} onRefresh={() => qc.invalidateQueries({ queryKey: ["fx-rates"] })} />}
+          {view === "appearance" && <SitePreferences theme={theme} onTheme={setTheme} currency={currency} onCurrency={setCurrency} language={language} onLanguage={setLanguage} fx={fx.data} onRefresh={() => qc.invalidateQueries({ queryKey: ["fx-rates"] })} assistantEnabled={assistantEnabled} onAssistant={setAssistantEnabled} onStartGuide={startGuide} />}
+          {view === "help" && <HelpCenter language={language} onGo={goToHelpTarget} onStartGuide={startGuide} />}
           {view === "settings" && <ModelSettings onSuccess={setToast} />}
           {view === "source" && (
             <SourcePanel summary={summary.data} onSuccess={setToast} />
@@ -836,6 +887,8 @@ function App() {
       {customerId !== null && (
         <CustomerDrawer key={customerId} id={customerId} currency={currency} fx={fx.data} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
       )}
+      {assistantEnabled && guideStep === null && <button className="assistant-launch" onClick={startGuide} aria-label={language === 'ru' ? 'Открыть помощника' : 'Open assistant'}><Sparkles size={18} /><span>{language === 'ru' ? 'Помощник' : 'Assistant'}</span></button>}
+      {guideStep !== null && <GuideDialog language={language} step={guideStep} onPrevious={() => changeGuideStep(guideStep - 1)} onNext={() => changeGuideStep(guideStep + 1)} onClose={closeGuide} />}
       {toast && (
         <div className="toast" role="status">
           <CheckCircle2 size={19} />
@@ -1183,11 +1236,12 @@ function RiskLevelFilter({ value, onChange }: { value: string; onChange: (value:
   );
 }
 
-function SitePreferences({ theme, onTheme, currency, onCurrency, language, onLanguage, fx, onRefresh }: {
+function SitePreferences({ theme, onTheme, currency, onCurrency, language, onLanguage, fx, onRefresh, assistantEnabled, onAssistant, onStartGuide }: {
   theme: Theme; onTheme: (value: Theme) => void;
   currency: Currency; onCurrency: (value: Currency) => void;
   language: Language; onLanguage: (value: Language) => void;
   fx?: FxRates; onRefresh: () => void;
+  assistantEnabled: boolean; onAssistant: (value: boolean) => void; onStartGuide: () => void;
 }) {
   return <div className="preferences-grid">
     <section className="panel preference-card">
@@ -1211,6 +1265,14 @@ function SitePreferences({ theme, onTheme, currency, onCurrency, language, onLan
           <button key={value} className={currency === value ? 'choice active' : 'choice'} aria-pressed={currency === value} onClick={() => onCurrency(value)}>{label}</button>)}
       </div>
       <div className="fx-status"><span>ЦБ РФ · дата курса: {fx?.rate_date || '24.10.2026'}{fx?.stale ? ' · резервный курс, ожидается обновление' : ''}</span><span>€1 = {(fx?.rates_rub.EUR || 90.2429).toFixed(4)} ₽ · $1 = {(fx?.rates_rub.USD || 80.5381).toFixed(4)} ₽</span><button className="secondary" onClick={onRefresh}><RefreshCw size={15} /> Проверить курс</button></div>
+    </section>
+    <section className="panel preference-card preference-wide assistant-preference">
+      <div className="panel-heading"><div><h2><Sparkles size={20} /> {language === 'ru' ? 'Помощник по сайту' : 'Site assistant'}</h2><p>{language === 'ru' ? 'Подсказки при первом входе и кнопка быстрого запуска.' : 'First-visit guidance and a quick launch button.'}</p></div></div>
+      <div className="assistant-preference-controls">
+        <label className="assistant-switch"><span>{language === 'ru' ? 'Показывать помощника' : 'Show assistant'}</span><input type="checkbox" role="switch" checked={assistantEnabled} onChange={event => onAssistant(event.target.checked)} /><i aria-hidden="true" /></label>
+        {assistantEnabled && <button className="secondary" onClick={onStartGuide}><Sparkles size={16} /> {language === 'ru' ? 'Пройти обучение заново' : 'Replay guide'}</button>}
+      </div>
+      <small>{language === 'ru' ? 'Выбор сохраняется на этом устройстве. Справочник в меню профиля доступен всегда.' : 'This choice is saved on this device. The guide in the profile menu stays available.'}</small>
     </section>
   </div>;
 }
