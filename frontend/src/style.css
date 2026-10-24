@@ -3748,3 +3748,31 @@ body,
   .help-card { padding: 18px; }
   .assistant-preference-controls .secondary { width: 100%; justify-content: center; }
 }
+
+/* Warm light surfaces and a theme-safe customer card. */
+:root {
+  --border: #cdb9a5;
+  --surface: #f6eee4;
+  --surface-container: #eee2d5;
+  --surface-container-high: #e6d5c4;
+  --muted: #66574c;
+}
+html:not([data-theme="dark"]) body,
+html:not([data-theme="dark"]) .main-shell,
+html:not([data-theme="dark"]) .main-content { background: #eae0d4; }
+html:not([data-theme="dark"]) .panel,
+html:not([data-theme="dark"]) .kpi,
+html:not([data-theme="dark"]) .service-card,
+html:not([data-theme="dark"]) .action-card,
+html:not([data-theme="dark"]) .drawer,
+html:not([data-theme="dark"]) .topbar,
+html:not([data-theme="dark"]) .sidebar { border: 1px solid var(--border); }
+html:not([data-theme="dark"]) .drawer-score { background: #e9d8c6; border: 1px solid #bca187; color: var(--ink); }
+html[data-theme="dark"] .drawer-score { background: #24201d; border: 1px solid #55483d; color: var(--ink); }
+html[data-theme="dark"] .drawer-score p,
+html[data-theme="dark"] .drawer-score > div > span { color: var(--on-surface-variant); }
+.customer-create-overlay { overflow-y: auto; overscroll-behavior: contain; }
+.customer-create-dialog { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.customer-phone, .action-phone { display: inline-flex; width: fit-content; margin: 0 0 12px; color: var(--on-surface-variant); font-size: 12px; font-weight: 700; text-decoration-color: var(--orange); }
+.customer-phone:hover, .action-phone:hover { color: var(--orange); }
+.scenario-result p { color: var(--on-surface-variant); font-size: 12px; line-height: 1.5; }

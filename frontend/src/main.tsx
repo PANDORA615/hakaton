@@ -1278,7 +1278,9 @@ function SitePreferences({ theme, onTheme, currency, onCurrency, language, onLan
 }
 
 function NewCustomerDialog({ sourceVersion, onClose, onCreated }: { sourceVersion: number; onClose: () => void; onCreated: (id: number) => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [balance, setBalance] = useState('0');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -1293,18 +1295,19 @@ function NewCustomerDialog({ sourceVersion, onClose, onCreated }: { sourceVersio
     event.preventDefault();
     setPending(true); setError('');
     try {
-      const cents = euroCentsFromDisplay(Number(balance));
+      const cents = euroCentsFromDisplay(Number(balance.replace(',', '.')));
       if (!Number.isSafeInteger(cents) || cents < 0) throw new Error('Проверьте сумму баланса');
-      const result = await api('/customers', { method: 'POST', body: JSON.stringify({ email: email.trim(), balance_cents: cents, expected_source_version: sourceVersion }) });
+      const result = await api('/customers', { method: 'POST', body: JSON.stringify({ email: email.trim(), phone: phone.trim() || null, balance_cents: cents, expected_source_version: sourceVersion }) });
       onCreated(result.id);
     } catch (cause) { setError((cause as Error).message); } finally { setPending(false); }
   }
-  return <div className="drawer-overlay customer-create-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="panel customer-create-dialog" role="dialog" aria-modal="true" aria-label="Добавить клиента">
+  return <div className="drawer-overlay customer-create-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onWheel={(event) => { if (event.target === event.currentTarget) dialogRef.current?.scrollBy({ top: event.deltaY, behavior: 'auto' }); }}>
+    <section ref={dialogRef} className="panel customer-create-dialog" role="dialog" aria-modal="true" aria-label="Добавить клиента">
       <div className="panel-heading"><div><h2>Новый клиент</h2><p>ID присвоится автоматически после сохранения.</p></div><button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={19} /></button></div>
       <form onSubmit={submit} className="customer-create-form">
         <label>Email клиента<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={320} autoFocus placeholder="client@example.com" /></label>
-        <label>Основной баланс, {currencySymbol()}<input type="number" min="0" step="0.01" value={balance} onChange={(event) => setBalance(event.target.value)} required /></label>
+        <label>Номер для обратной связи<input type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={32} placeholder="+7 999 123 45 67" /></label>
+        <label>Основной баланс, {currencySymbol()}<input type="text" inputMode="decimal" value={balance} onChange={(event) => setBalance(event.target.value)} required /></label>
         <small>Услуги можно загрузить через снимок данных. Импорт снимка полностью заменяет текущий реестр.</small>
         {error && <ErrorBox message={error} />}
         <button className="primary" type="submit" disabled={pending}>{pending ? 'Сохраняем…' : 'Добавить в реестр'}</button>
@@ -1546,6 +1549,7 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
     setScenarioError("");
     try {
       const payload = scenarioPayload();
+      if (typeof payload.balance_cents === 'number' && (!Number.isSafeInteger(payload.balance_cents) || payload.balance_cents < 0)) throw new Error('Проверьте сумму баланса');
       const result = await api(`/customers/${id}/simulate`, { method: "POST", body: JSON.stringify(payload) });
       setScenario({ ...result, customer_id: id, inputs: JSON.stringify(payload) });
     } catch (error) {
@@ -1595,7 +1599,7 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
       deleted: "Удалена",
       prolong_wait: "Ожидает оплаты",
     };
-  const scenarioStale = scenario && c && (scenario.customer_id !== id || scenario.calculation_version !== c.calculation_version || scenario.inputs !== JSON.stringify(scenarioPayload()));
+  const scenarioStale = scenario && c && (scenario.customer_id !== id || scenario.calculation_version !== c.calculation_version || scenario.source_version !== c.source_version || scenario.settings_version !== c.settings_version || scenario.inputs !== JSON.stringify(scenarioPayload()));
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside
@@ -1626,6 +1630,7 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
               <span className="big-avatar">{c.email[0].toUpperCase()}</span>
               <h2>{c.email}</h2>
               <small className="customer-id-label">ID #{c.id}</small>
+              {c.phone && <a className="customer-phone" href={`tel:${c.phone}`}>Позвонить: {c.phone}</a>}
               <Badge level={c.risk_level} />
             </div>
             <div className="drawer-score">
@@ -1697,7 +1702,12 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
               {scenarioStale && <p className="scenario-stale">Данные или параметры сценария изменились. Пересчитайте его.</p>}
               {scenario && !scenarioStale && <div className="scenario-result">
                 <span>Индекс: {scenario.before.score ?? "—"} → <strong>{scenario.after.score ?? "—"}</strong></span>
+                <span>Уровень риска: {levels[scenario.before.risk_level as Level]} → <strong>{levels[scenario.after.risk_level as Level]}</strong></span>
                 <span>Под риском: {money(scenario.before.loss_eur)} → <strong>{money(scenario.after.loss_eur)}</strong></span>
+                <span>Баланс: {money(scenario.before.balance / 100)} → <strong>{money(scenario.after.balance / 100)}</strong></span>
+                {scenarioService && <span>Услуга: автопродление {scenario.before.services.find((item: any) => item.id === Number(scenarioService))?.autoProlong ? 'включено' : 'выключено'} → <strong>{scenarioAuto ? 'включено' : 'выключено'}</strong></span>}
+                <p>{scenario.after.reason}</p>
+                {scenario.before.score === scenario.after.score && scenario.before.loss_eur === scenario.after.loss_eur && <small>При выбранных параметрах оценка не изменилась. Проверьте срок услуги и ближайшие платежи.</small>}
                 <small>Расчёт #{scenario.calculation_version} · {date(scenario.as_of)} МСК · только пробный результат</small>
               </div>}
             </section>
@@ -1801,7 +1811,11 @@ function OutcomesPanel({ onSelect }: { onSelect: (id: number) => void }) {
 function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; onSuccess: (message: string) => void }) {
   const query = useQuery({ queryKey: ["actions"], queryFn: () => api("/actions"), refetchInterval: 5000 });
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(() => {
+    const saved = localStorage.getItem('aeza-action-filter');
+    return ['all', 'open', 'contacted', 'resolved'].includes(saved || '') ? saved! : 'all';
+  });
+  useEffect(() => { localStorage.setItem('aeza-action-filter', filter); }, [filter]);
   if (query.isError) return <ErrorBox message={query.error.message} />;
   if (query.isPending) return <Loading />;
   const items = query.data.items as any[];
@@ -1811,7 +1825,7 @@ function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; 
     ['all', 'Все'], ['open', 'В работе'], ['contacted', 'Связались'], ['resolved', 'Завершено'],
   ];
   return <section className="panel action-panel">
-    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Добавляйте клиентов из карточки, фиксируйте результат общения.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
+    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Постоянный список по порядку добавления. Контакты и результаты сохраняются на сервере.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
     <div className="action-filters" aria-label="Фильтр контактов">{filters.map(([key, label]) => <button key={key} type="button" className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label} <span>{key === 'all' ? items.length : items.filter((item) => item.status === key).length}</span></button>)}</div>
     {items.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Очередь пуста</h3><p>Откройте клиента и нажмите «Добавить в работу».</p></div>}
     {items.length > 0 && visible.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Нет записей с таким статусом</h3></div>}
@@ -1875,6 +1889,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       <button disabled={!action.customer} onClick={() => onSelect(action.customer_id)}>{action.customer?.email ?? `Клиент #${action.customer_id} · нет в текущих данных`}</button>
       <span>{action.customer ? <Badge level={action.customer.risk_level} /> : "Нет в текущем снимке"}</span>
     </div>
+    {action.customer?.phone && <a className="action-phone" href={`tel:${action.customer.phone}`}>Позвонить: {action.customer.phone}</a>}
     {action.customer && <p>{formatReason(action.customer.reason)} · {money(action.customer.loss_eur)} под риском</p>}
     <div className="action-fields">
       <label>Статус<select value={status} onChange={(event) => { setStatus(event.target.value); setDirty(true); }}><option value="open">В работе</option><option value="contacted">Связались</option><option value="resolved">Завершено</option></select></label>

@@ -83,6 +83,7 @@ class SettingsPatch(BaseModel):
 class CustomerCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
     email: str = Field(min_length=3, max_length=320)
+    phone: str | None = Field(default=None, max_length=32)
     balance_cents: int = Field(default=0, ge=0, le=9223372036854775807, strict=True)
     expected_source_version: int = Field(ge=1, strict=True)
 
@@ -93,6 +94,16 @@ class CustomerCreate(BaseModel):
         if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', value):
             raise ValueError('Укажите корректный email')
         return value
+
+    @field_validator('phone')
+    @classmethod
+    def valid_phone(cls, value):
+        if value is None or not value.strip():
+            return None
+        normalized = re.sub(r'[\s()\-]', '', value)
+        if not re.fullmatch(r'\+[1-9]\d{9,14}', normalized):
+            raise ValueError('Укажите номер в международном формате: +79991234567')
+        return normalized
 
 
 class ScenarioRequest(BaseModel):
@@ -441,7 +452,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     @app.post('/api/v1/customers', status_code=201, dependencies=[Depends(authorized)], tags=['customers'])
     def create_customer(body: CustomerCreate):
         try:
-            return store.add_customer(body.email, body.balance_cents, body.expected_source_version)
+            return store.add_customer(body.email, body.balance_cents, body.expected_source_version, body.phone)
         except Conflict as exc:
             raise HTTPException(409, str(exc)) from exc
 

@@ -5,6 +5,7 @@ metadata = MetaData()
 ID_TYPE = BigInteger().with_variant(Integer, 'sqlite')
 accounts = Table('accounts', metadata,
     Column('id', ID_TYPE, Identity(), primary_key=True), Column('email', Text, nullable=False, unique=True),
+    Column('phone', String(16)),
     *[Column(k, BigInteger, nullable=False, default=0, server_default=text('0')) for k in ('balance', 'withdrawBalance', 'totalReplenished', 'bonusBalance')],
     Column('bonusState', Text, nullable=False, default='locked', server_default=text("'locked'")),
     *[CheckConstraint(f'"{k}" >= 0') for k in ('balance', 'withdrawBalance', 'totalReplenished', 'bonusBalance')],

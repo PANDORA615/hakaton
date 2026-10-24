@@ -84,12 +84,16 @@ class Store:
                     conn.execute(insert(table), [r.model_dump() for r in rows])
                 if self.engine.dialect.name == 'postgresql':
                     conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{table.name}', 'id'), COALESCE((SELECT max(id) FROM {table.name}), 1), EXISTS(SELECT 1 FROM {table.name}))"))
-            conn.execute(insert(db.snapshots).values(payload=snapshot.model_dump(mode='json'), imported_at=datetime.now(timezone.utc).isoformat()))
+            payload = snapshot.model_dump(mode='json')
+            for account in payload['accounts']:
+                if account['phone'] is None:
+                    del account['phone']
+            conn.execute(insert(db.snapshots).values(payload=payload, imported_at=datetime.now(timezone.utc).isoformat()))
             self._calculate(conn)
         self.prune_history()
         return self.current()
 
-    def add_customer(self, email, balance_cents, expected_source_version):
+    def add_customer(self, email, balance_cents, expected_source_version, phone=None):
         with self.lock:
             with self.engine.connect() as conn:
                 latest = self.latest(conn, db.snapshots)
@@ -100,7 +104,7 @@ class Store:
             if any(account.email.lower() == email for account in source.accounts):
                 raise Conflict('Клиент с таким email уже есть в реестре.')
             customer_id = max((account.id for account in source.accounts), default=0) + 1
-            account = Account(id=customer_id, email=email, balance=balance_cents,
+            account = Account(id=customer_id, email=email, phone=phone, balance=balance_cents,
                               withdrawBalance=0, totalReplenished=0,
                               bonusBalance=0, bonusState='locked')
             source.accounts.append(account)
@@ -217,13 +221,14 @@ class Store:
             scenario = calculate(source, settings, datetime.fromisoformat(current['as_of']))
             after = next(customer for customer in scenario['customers'] if customer['id'] == customer_id)
             return {'before': before, 'after': after, 'as_of': current['as_of'],
-                    'calculation_version': current['id'], 'saved': False}
+                    'calculation_version': current['id'], 'source_version': current['source_version'],
+                    'settings_version': current['settings_version'], 'saved': False}
 
     def actions(self):
         current = self.current()
         customers = {customer['id']: customer for customer in current['customers']}
         with self.engine.connect() as conn:
-            rows = conn.execute(select(db.marketing_actions).order_by(db.marketing_actions.c.updated_at.desc())).mappings().all()
+            rows = conn.execute(select(db.marketing_actions).order_by(db.marketing_actions.c.id.asc())).mappings().all()
         return [{**dict(row), 'customer': customers.get(row['customer_id'])} for row in rows]
 
     def action_outcomes(self):

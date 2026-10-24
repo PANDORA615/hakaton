@@ -70,76 +70,6 @@
         ]
       }
     },
-    "/api/v1/auth/oidc/start": {
-      "get": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Oidc Start",
-        "operationId": "oidc_start_api_v1_auth_oidc_start_get",
-        "parameters": [
-          {
-            "name": "remember_me",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Remember Me"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "SessionCookie": []
-          }
-        ]
-      }
-    },
-    "/api/v1/auth/oidc/callback": {
-      "get": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Oidc Callback",
-        "operationId": "oidc_callback_api_v1_auth_oidc_callback_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "SessionCookie": []
-          }
-        ]
-      }
-    },
     "/api/v1/auth/me": {
       "get": {
         "tags": [
@@ -1139,6 +1069,19 @@
             "minLength": 3,
             "title": "Email"
           },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16,
+                "pattern": "^\\+[1-9]\\d{9,14}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
           "balance": {
             "type": "integer",
             "maximum": 9.223372036854776e+18,
@@ -1237,6 +1180,18 @@
             "maxLength": 320,
             "minLength": 3,
             "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
           },
           "balance_cents": {
             "type": "integer",

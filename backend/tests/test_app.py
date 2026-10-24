@@ -46,7 +46,7 @@ def sign_in(client):
 def test_add_customer_gets_unique_id_is_searchable_and_persists(client, app):
     headers = sign_in(client)
     before = client.get('/api/v1/analytics/summary').json()
-    body = {'email': '  New.Customer@Example.Test ', 'balance_cents': 12345,
+    body = {'email': '  New.Customer@Example.Test ', 'phone': '+7 (999) 123-45-67', 'balance_cents': 12345,
             'expected_source_version': before['source_version']}
     assert client.post('/api/v1/customers', json=body).status_code == 403
     created = client.post('/api/v1/customers', json=body, headers=headers)
@@ -56,8 +56,14 @@ def test_add_customer_gets_unique_id_is_searchable_and_persists(client, app):
     found = client.get(f'/api/v1/customers?search={customer_id}').json()['items']
     assert any(item['id'] == customer_id for item in found)
     assert client.get(f'/api/v1/customers/{customer_id}').json()['email'] == 'new.customer@example.test'
+    assert client.get(f'/api/v1/customers/{customer_id}').json()['phone'] == '+79991234567'
     source = client.get('/api/v1/source/snapshot').json()
     assert next(item for item in source['accounts'] if item['id'] == customer_id)['balance'] == 12345
+    assert next(item for item in source['accounts'] if item['id'] == customer_id)['phone'] == '+79991234567'
+    queued = client.put(f'/api/v1/actions/{customer_id}', json={'status': 'open', 'note': ''}, headers=headers)
+    assert queued.status_code == 200
+    assert next(item for item in client.get('/api/v1/actions').json()['items'] if item['customer_id'] == customer_id)['customer']['phone'] == '+79991234567'
+    assert client.post('/api/v1/customers', json={**body, 'phone': '123'}, headers=headers).status_code == 422
     assert client.post('/api/v1/customers', json=body, headers=headers).status_code == 409
     body['expected_source_version'] = created.json()['source_version']
     assert client.post('/api/v1/customers', json=body, headers=headers).status_code == 409
@@ -449,13 +455,16 @@ def test_scenario_does_not_publish_or_change_source(client, source):
     assert response.status_code == 200
     result = response.json()
     assert result['saved'] is False
-    assert result['after']['loss_eur'] <= result['before']['loss_eur']
+    assert result['after']['loss_eur'] < result['before']['loss_eur']
+    assert result['after']['score'] < result['before']['score']
+    assert result['after']['balance'] == 100000
+    assert result['source_version'] == client.get('/api/v1/analytics/summary').json()['source_version']
     assert client.get('/api/v1/analytics/summary').json()['calculation_version'] == before
     assert client.get('/api/v1/source/snapshot').json() == original
     assert client.post('/api/v1/customers/1006/simulate', headers=headers, json={}).status_code == 422
 
 
-def test_marketing_actions(client, source):
+def test_marketing_actions(client, app, source):
     headers = sign_in(client)
     assert client.get('/api/v1/actions').json()['items'] == []
     assert client.get('/api/v1/actions/outcomes').json()['renewal_share_pct'] is None
@@ -493,6 +502,12 @@ def test_marketing_actions(client, source):
     assert client.put('/api/v1/actions/1', headers=headers, json={'status': 'resolved', 'note': 'Завершено', 'expected_version': 4}).status_code == 200
     assert client.get('/api/v1/actions').json()['items'][0]['customer'] is None
     assert client.get('/api/v1/actions/outcomes').json()['renewed'] == 1
+    reopened = create_app(str(app.state.store.engine.url), str(DATA_PATH), PASSWORD, NOW, testing=True)
+    with TestClient(reopened) as second_client:
+        sign_in(second_client)
+        saved = second_client.get('/api/v1/actions').json()['items']
+        assert [item['customer_id'] for item in saved] == [1, 2]
+        assert saved[0]['status'] == 'resolved' and saved[0]['note'] == 'Завершено'
 
 
 def test_metrics_and_openapi(client):

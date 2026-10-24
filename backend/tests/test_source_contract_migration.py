@@ -46,5 +46,6 @@ def test_upgrade_old_sqlite_source_contract(tmp_path):
         assert conn.scalar(text('SELECT amount FROM transactions WHERE id=1')) == 1000
         conn.execute(text("INSERT INTO transactions(id,amount,status,createdAt,type,serviceId) "
                           "VALUES (2,2500000000,'not_performed','2026-10-02T00:00:00Z','order',1)"))
-        assert conn.scalar(text('SELECT version_num FROM alembic_version')) == '007_source_contract'
+        assert conn.scalar(text('SELECT version_num FROM alembic_version')) == '008_customer_phone'
+        assert conn.scalar(text('SELECT phone FROM accounts WHERE id=1')) is None
         assert conn.scalar(text('SELECT count(*) FROM transactions')) == 2

@@ -20,6 +20,7 @@ class DTO(BaseModel):
 class Account(DTO):
     id: Id
     email: str = Field(min_length=3, max_length=320)
+    phone: str | None = Field(default=None, max_length=16, pattern=r'^\+[1-9]\d{9,14}$')
     balance: Money
     withdrawBalance: Money
     totalReplenished: Money
