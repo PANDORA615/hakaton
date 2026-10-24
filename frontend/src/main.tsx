@@ -1678,7 +1678,7 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
                 {s.quality_warning ? (
                   <div className="inline-warning">
                     <AlertTriangle size={16} />
-                    {s.quality_warning}
+                    {formatReason(s.quality_warning)}
                   </div>
                 ) : (
                   <div className="feature-list">
@@ -2347,7 +2347,7 @@ function SourcePanel({
                   Услуга <strong>#{w.service_id}</strong> · клиент #
                   {w.customer_id}
                 </span>
-                <p>{w.message}</p>
+                <p>{formatReason(w.message)}</p>
               </div>
             ))}
           </div>
