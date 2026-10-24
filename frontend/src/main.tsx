@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Check,
   ChevronLeft,
+  ChevronDown,
   ChevronRight,
   Database,
   Download,
@@ -41,7 +42,7 @@ import {
   Monitor,
   ClipboardList,
 } from "lucide-react";
-import { api, setCSRF, levels, money, date, Level } from "./api";
+import { api, ApiError, setCSRF, levels, money, date, Level } from "./api";
 import "./style.css";
 
 const client = new QueryClient({
@@ -56,7 +57,7 @@ const levelColors: Record<Level, string> = {
   low: "#43a887",
   unknown: "#a8adb7",
 };
-type View = "overview" | "customers" | "settings" | "source" | "actions";
+type View = "overview" | "customers" | "settings" | "source" | "actions" | "outcomes" | "account";
 type Theme = "system" | "light" | "dark";
 
 function initialTheme(): Theme {
@@ -154,29 +155,155 @@ function Loading() {
   );
 }
 
+function OidcDemo({
+  onBack,
+  onLogin,
+  theme,
+  systemDark,
+  onToggleTheme,
+  initialRemember,
+}: {
+  onBack: () => void;
+  onLogin: (u: any) => void;
+  theme: Theme;
+  systemDark: boolean;
+  onToggleTheme: () => void;
+  initialRemember: boolean;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [login, setLogin] = useState("admin");
+  const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [account, setAccount] = useState<any>(null);
+  const [rememberMe, setRememberMe] = useState(initialRemember);
+
+  async function confirm(e: React.FormEvent) {
+    e.preventDefault();
+    setPending(true);
+    setError("");
+    try {
+      const user = await api("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ login, password, remember_me: rememberMe }),
+      });
+      setCSRF(user.csrf_token);
+      setAccount(user);
+      setPassword("");
+      setStep(3);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="oidc-demo-page">
+      <div className="oidc-demo-theme">
+        <ThemeToggle theme={theme} systemDark={systemDark} onToggle={onToggleTheme} />
+      </div>
+      <div className="oidc-demo-shell">
+        <div className="oidc-demo-heading">
+          <Logo />
+          <span className="oidc-demo-pill">Демонстрация единого входа</span>
+        </div>
+        <div className="oidc-demo-steps" aria-label={`Шаг ${step} из 3`}>
+          {[1, 2, 3].map((number) => (
+            <span key={number} className={number <= step ? "active" : ""} />
+          ))}
+        </div>
+        <section className="oidc-demo-card">
+          <span className="oidc-demo-icon">
+            {step === 3 ? <CheckCircle2 size={26} /> : <ShieldCheck size={26} />}
+          </span>
+          <div className="oidc-demo-kicker">Шаг {step} из 3 · Демо-провайдер</div>
+          {step === 1 && (
+            <>
+              <h1>Переход к провайдеру</h1>
+              <p>Вход через OIDC перенаправляет вас на страницу организации, которая подтверждает личность.</p>
+              <div className="oidc-demo-flow">
+                <span>Aéza Retention</span><ArrowRight size={18} /><span>Провайдер входа</span>
+              </div>
+              <button className="primary oidc-demo-action" onClick={() => setStep(2)}>
+                Продолжить <ArrowRight size={18} />
+              </button>
+            </>
+          )}
+          {step === 2 && (
+            <form onSubmit={confirm} className="oidc-demo-form">
+              <h1>Подтвердите личность</h1>
+              <p>Для безопасной демонстрации используйте действующий логин и пароль администратора. Настоящий OIDC-провайдер проверял бы их на своей стороне.</p>
+              {error && <ErrorBox message={error} />}
+              <label>Логин<input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" required /></label>
+              <label>Пароль<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="current-password" required /></label>
+              <label className="remember-choice"><input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />Запомнить меня</label>
+              <button className="primary oidc-demo-action" disabled={pending}>
+                {pending ? "Проверяем…" : "Подтвердить вход"} <ArrowRight size={18} />
+              </button>
+            </form>
+          )}
+          {step === 3 && (
+            <>
+              <h1>Личность подтверждена</h1>
+              <p>Демонстрационный переход завершён. Откройте панель с обычной защищённой сессией приложения.</p>
+              <div className="oidc-demo-flow">
+                <span>Провайдер входа</span><ArrowRight size={18} /><span>Aéza Retention</span>
+              </div>
+              <button className="primary oidc-demo-action" onClick={() => onLogin(account)}>
+                Открыть панель <ArrowRight size={18} />
+              </button>
+            </>
+          )}
+        </section>
+        {step !== 3 && (
+          <button className="oidc-demo-back" onClick={onBack}>
+            <ChevronLeft size={17} /> Вернуться к обычному входу
+          </button>
+        )}
+        <p className="oidc-demo-disclaimer">Это демонстрация экранов входа. Реальная проверка OIDC заработает после подключения провайдера и HTTPS.</p>
+      </div>
+    </main>
+  );
+}
+
 function LoginPage({
   onLogin,
   theme,
   systemDark,
   onToggleTheme,
+  authReady,
 }: {
   onLogin: (u: any) => void;
   theme: Theme;
   systemDark: boolean;
   onToggleTheme: () => void;
+  authReady: boolean;
 }) {
   const [login, setLogin] = useState("admin"),
     [password, setPassword] = useState(""),
-    [error, setError] = useState(""),
+    [error, setError] = useState(() => new URLSearchParams(window.location.search).has("auth_error") ? "Не удалось войти через единый вход. Попробуйте ещё раз или используйте пароль." : ""),
     [pending, setPending] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [showOidcDemo, setShowOidcDemo] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("auth_error")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    api<{ oidc: boolean }>("/auth/methods")
+      .then((methods) => setOidcEnabled(methods.oidc))
+      .catch(() => {});
+  }, []);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!authReady) return;
     setPending(true);
     setError("");
     try {
       const u = await api("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ login, password }),
+        body: JSON.stringify({ login, password, remember_me: rememberMe }),
       });
       setCSRF(u.csrf_token);
       onLogin(u);
@@ -185,6 +312,9 @@ function LoginPage({
     } finally {
       setPending(false);
     }
+  }
+  if (showOidcDemo) {
+    return <OidcDemo onBack={() => setShowOidcDemo(false)} onLogin={onLogin} theme={theme} systemDark={systemDark} onToggleTheme={onToggleTheme} initialRemember={rememberMe} />;
   }
   return (
     <main className="login-page">
@@ -245,10 +375,25 @@ function LoginPage({
               required
             />
           </label>
-          <button className="primary" disabled={pending}>
+          <label className="remember-choice"><input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />Запомнить меня</label>
+          <button className="primary" disabled={pending || !authReady}>
             {pending ? "Входим…" : "Войти в панель"}
             <ArrowRight size={18} />
           </button>
+          {oidcEnabled && (
+            <a className="oidc-button" href={`/api/v1/auth/oidc/start?remember_me=${rememberMe}`} onClick={(event) => {
+              if (!authReady) { event.preventDefault(); return; }
+              sessionStorage.setItem("aeza-oidc-return", "1");
+            }}>
+              Войти через единый вход
+              <ArrowRight size={17} />
+            </a>
+          )}
+          {!oidcEnabled && (
+            <button className="oidc-button" type="button" disabled={!authReady} onClick={() => setShowOidcDemo(true)}>
+              Посмотреть вход через OIDC <ArrowRight size={17} />
+            </button>
+          )}
           <div className="login-secure">
             <ShieldCheck size={16} /> Данные доступны только после входа
           </div>
@@ -261,11 +406,13 @@ function LoginPage({
 
 function App() {
   const [user, setUser] = useState<any>(null),
-    [checking, setChecking] = useState(true),
+    [authReady, setAuthReady] = useState(false),
     [view, setView] = useState<View>("overview"),
     [customerId, setCustomerId] = useState<number | null>(null),
     [connection, setConnection] = useState("Подключение…"),
     [mobile, setMobile] = useState(false),
+    [profileMenuOpen, setProfileMenuOpen] = useState(false),
+    [horizonPending, setHorizonPending] = useState(false),
     [toast, setToast] = useState("");
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [focusScenario, setFocusScenario] = useState(false);
@@ -273,6 +420,7 @@ function App() {
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
   const qc = useQueryClient();
+  const authGeneration = useRef(0);
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const update = (event: MediaQueryListEvent) => setSystemDark(event.matches);
@@ -294,14 +442,29 @@ function App() {
     setTheme((current) => nextTheme(current, systemDark));
   }
   useEffect(() => {
+    const generation = authGeneration.current;
+    const params = new URLSearchParams(window.location.search);
+    const oidcReturn = sessionStorage.getItem("aeza-oidc-return") === "1" && params.get("oidc_login") === "success";
+    sessionStorage.removeItem("aeza-oidc-return");
+    if (params.has("oidc_login")) {
+      params.delete("oidc_login");
+      window.history.replaceState({}, "", window.location.pathname + (params.size ? `?${params}` : ""));
+    }
     api("/auth/me")
-      .then((u) => {
-        setCSRF(u.csrf_token);
-        setUser(u);
+      .then(async (u) => {
+        if (generation === authGeneration.current) {
+          setCSRF(u.csrf_token);
+          if (u.remember_me || oidcReturn) setUser(u);
+          else {
+            try { await api("/auth/logout", { method: "POST" }); } catch { /* The next login replaces this session. */ }
+            setCSRF("");
+          }
+        }
       })
       .catch(() => {})
-      .finally(() => setChecking(false));
+      .finally(() => setAuthReady(true));
     const expire = () => {
+      authGeneration.current += 1;
       setUser(null);
       setCSRF("");
       qc.clear();
@@ -334,9 +497,15 @@ function App() {
     enabled: !!user,
     refetchInterval: 5000,
   });
+  const accountSummary = useQuery({
+    queryKey: ["account"],
+    queryFn: () => api("/account"),
+    enabled: !!user,
+  });
   async function logout() {
     try {
       await api("/auth/logout", { method: "POST" });
+      authGeneration.current += 1;
       setCSRF("");
       setUser(null);
       qc.clear();
@@ -347,6 +516,27 @@ function App() {
   function navigate(v: View) {
     setView(v);
     setMobile(false);
+    setProfileMenuOpen(false);
+  }
+  async function changeHorizon(days: number) {
+    setHorizonPending(true);
+    try {
+      const settings = await api('/model/settings');
+      await api('/model/settings', { method: 'PATCH', body: JSON.stringify({
+        expected_settings_version: settings.settings_version,
+        horizon_days: days,
+        urgency_days: Math.min(settings.urgency_days, days),
+      }) });
+      await qc.invalidateQueries({ queryKey: ['summary'] });
+      await qc.invalidateQueries({ queryKey: ['settings'] });
+      await qc.invalidateQueries({ queryKey: ['customers'] });
+      await qc.invalidateQueries({ queryKey: ['customer'] });
+      setToast(`Горизонт анализа: ${days} дн.`);
+    } catch (error) {
+      setToast((error as Error).message);
+    } finally {
+      setHorizonPending(false);
+    }
   }
   function openCustomer(id: number) {
     setFocusScenario(false);
@@ -369,14 +559,14 @@ function App() {
     const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
     document.getElementById("forecast-chart")?.scrollIntoView({ behavior });
   }
-  if (checking) return <Loading />;
   if (!user)
     return (
       <LoginPage
-        onLogin={setUser}
+        onLogin={(value) => { authGeneration.current += 1; setUser(value); }}
         theme={theme}
         systemDark={systemDark}
         onToggleTheme={toggleTheme}
+        authReady={authReady}
       />
     );
   return (
@@ -408,6 +598,7 @@ function App() {
               ["settings", SlidersHorizontal, "Модель риска"],
               ["source", Database, "Источники данных"],
               ["actions", ClipboardList, "Работа с клиентами"],
+              ["outcomes", CheckCircle2, "Результаты"],
             ] as const
           ).map(([id, Icon, label]) => (
             <button
@@ -438,13 +629,6 @@ function App() {
               Настроить модель <ArrowUpRight size={14} />
             </button>
           </div>
-          <button className="profile" onClick={logout} title="Выйти">
-            <span className="avatar">A</span>
-            <span>
-              Администратор<small>{user.login}</small>
-            </span>
-            <LogOut size={17} />
-          </button>
         </div>
       </aside>
       <div className="main-shell">
@@ -467,6 +651,8 @@ function App() {
                   settings: "Модель риска",
                   source: "Источники данных",
                   actions: "Работа с клиентами",
+                  outcomes: "Результаты",
+                  account: "Аккаунт",
                 }[view]
               }
             </strong>
@@ -487,7 +673,15 @@ function App() {
               systemDark={systemDark}
               onToggle={toggleTheme}
             />
-            <span className="small-avatar">A</span>
+            <div className="profile-menu" onMouseEnter={() => setProfileMenuOpen(true)} onMouseLeave={() => setProfileMenuOpen(false)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === 'Escape') setProfileMenuOpen(false); }}>
+              <button className="small-avatar" aria-label="Меню аккаунта" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen(true)} onFocus={() => setProfileMenuOpen(true)}>{(accountSummary.data?.display_name || user.login).slice(0, 1).toUpperCase()}</button>
+              {profileMenuOpen && <div className="profile-menu-panel" role="menu">
+                <div className="profile-menu-user"><strong>{accountSummary.data?.display_name || "Администратор"}</strong><span>{user.login}</span></div>
+                <button role="menuitem" onClick={() => navigate("account")}><Settings2 size={17} /> Настройки аккаунта</button>
+                <button role="menuitem" onClick={() => navigate("settings")}><SlidersHorizontal size={17} /> Модель риска</button>
+                <button role="menuitem" onClick={() => { setProfileMenuOpen(false); logout(); }}><LogOut size={17} /> Выйти</button>
+              </div>}
+            </div>
           </div>
         </header>
         <main className="main-content" key={view}>
@@ -503,6 +697,8 @@ function App() {
                     settings: "Модель риска",
                     source: "Источники данных",
                     actions: "Работа с клиентами",
+                    outcomes: "Результаты",
+                    account: "Аккаунт",
                   }[view]
                 }
               </h1>
@@ -514,15 +710,14 @@ function App() {
                     settings: "Прозрачные правила. Управляемые коэффициенты.",
                     source: "Исходные данные и качество прогноза.",
                     actions: "Контакты и результаты работы с клиентами.",
+                    outcomes: "Фактически отмеченные продления после контакта.",
+                    account: "Профиль, безопасность и способы входа.",
                   }[view]
                 }
               </p>
             </div>
             <div className="heading-actions">
-              <span className="period">
-                <Clock size={15} /> Горизонт: {summary.data?.horizon_days ?? 7}{" "}
-                дней
-              </span>
+              <HorizonFilter value={summary.data?.horizon_days ?? 7} disabled={horizonPending || !summary.data} onChange={changeHorizon} />
               {view === "overview" && (
                 <>
                   <button className="secondary" onClick={showForecast}>
@@ -569,6 +764,10 @@ function App() {
             <SourcePanel summary={summary.data} onSuccess={setToast} />
           )}
           {view === "actions" && <ActionQueue onSelect={openCustomer} onSuccess={setToast} />}
+          {view === "outcomes" && <OutcomesPanel onSelect={openCustomer} />}
+          {view === "account" && <AccountSettings data={accountSummary.data} pending={accountSummary.isPending} error={accountSummary.error as Error | null}
+            onSaved={(updated) => { qc.setQueryData(["account"], updated); setUser((current: any) => ({ ...current, login: updated.login })); setToast("Профиль сохранён"); }}
+            onSuccess={setToast} onLogout={logout} />}
           <footer className="page-footer">
             <span>© 2026 · Aéza Retention</span>
             <span>
@@ -578,7 +777,7 @@ function App() {
         </main>
       </div>
       {customerId !== null && (
-        <CustomerDrawer id={customerId} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
+        <CustomerDrawer key={customerId} id={customerId} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
       )}
       {toast && (
         <div className="toast" role="status">
@@ -834,6 +1033,94 @@ function Overview({
   );
 }
 
+function HorizonFilter({ value, disabled, onChange }: { value: number; disabled: boolean; onChange: (value: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const presets = [
+    { value: 1, label: '1 день' },
+    { value: 7, label: '7 дней' },
+    { value: 14, label: '2 недели' },
+    { value: 30, label: '1 месяц' },
+  ];
+  const options = presets.some((item) => item.value === value) ? presets : [{ value, label: `${value} дней` }, ...presets];
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    root.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [open]);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
+  return <div className="risk-filter horizon-filter" ref={root}>
+    <button ref={trigger} type="button" className="period horizon-filter-trigger" aria-label="Горизонт анализа" aria-haspopup="listbox" aria-expanded={open} disabled={disabled}
+      onClick={() => setOpen((current) => !current)}
+      onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); } if (event.key === 'Escape') setOpen(false); }}>
+      <Clock size={15} /><span>Горизонт: {options.find((item) => item.value === value)?.label}</span><ChevronDown size={14} />
+    </button>
+    {open && <div className="risk-filter-menu horizon-filter-menu" role="listbox" aria-label="Горизонт анализа">
+      {options.map((item, index) => <button key={item.value} type="button" role="option" aria-selected={value === item.value} className="risk-filter-option"
+        onClick={() => { onChange(item.value); setOpen(false); trigger.current?.focus(); }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') { setOpen(false); trigger.current?.focus(); }
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const items = root.current?.querySelectorAll<HTMLElement>('[role="option"]');
+            items?.[(index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+          }
+        }}>
+        <span className="risk-filter-dot" />{item.label}{value === item.value && <Check size={15} />}
+      </button>)}
+    </div>}
+  </div>;
+}
+
+function RiskLevelFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const options = [{ value: "", label: "Все уровни" }, ...ordered.map((key) => ({ value: key, label: levels[key] }))];
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    const selected = root.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    selected?.focus();
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
+  return (
+    <div className={`risk-filter risk-filter-${value || "all"}`} ref={root}>
+      <button ref={trigger} className="risk-filter-trigger" type="button" aria-label="Уровень риска" aria-haspopup="listbox" aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); } }}>
+        <SlidersHorizontal size={15} />
+        <span className="risk-filter-dot" />
+        <span>{options.find((item) => item.value === value)?.label}</span>
+        <ChevronDown size={15} />
+      </button>
+      {open && <div className="risk-filter-menu" role="listbox" aria-label="Уровень риска">
+        {options.map((item, index) => <button key={item.value} type="button" role="option" aria-selected={value === item.value}
+          className={`risk-filter-option risk-filter-${item.value || "all"}`}
+          onClick={() => { onChange(item.value); setOpen(false); trigger.current?.focus(); }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); }
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const items = root.current?.querySelectorAll<HTMLElement>('[role="option"]');
+              items?.[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+            }
+          }}>
+          <span className="risk-filter-dot" />{item.label}{value === item.value && <Check size={15} />}
+        </button>)}
+      </div>}
+    </div>
+  );
+}
+
 function CustomerTable({
   compact = false,
   onSelect,
@@ -893,24 +1180,7 @@ function CustomerTable({
               }}
             />
           </div>
-          <div className="filter">
-            <SlidersHorizontal size={15} />
-            <select
-              aria-label="Уровень риска"
-              value={level}
-              onChange={(e) => {
-                setLevel(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">Все уровни</option>
-              {ordered.map((k) => (
-                <option key={k} value={k}>
-                  {levels[k]}
-                </option>
-              ))}
-            </select>
-          </div>
+          <RiskLevelFilter value={level} onChange={(selected) => { setLevel(selected); setPage(1); }} />
         </div>
       </div>
       {query.isError && <ErrorBox message={query.error.message} />}
@@ -1059,18 +1329,24 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
   const [scenarioAuto, setScenarioAuto] = useState(false);
   const [scenario, setScenario] = useState<any>(null);
   const [scenarioError, setScenarioError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [scenarioPending, setScenarioPending] = useState(false);
+  function scenarioPayload() {
+    const payload: Record<string, number | boolean> = {};
+    if (scenarioBalance !== "") payload.balance_cents = Math.round(Number(scenarioBalance) * 100);
+    if (scenarioService) {
+      payload.service_id = Number(scenarioService);
+      payload.auto_prolong = scenarioAuto;
+    }
+    return payload;
+  }
   async function runScenario() {
     setScenarioPending(true);
     setScenarioError("");
     try {
-      const payload: Record<string, number | boolean> = {};
-      if (scenarioBalance !== "") payload.balance_cents = Math.round(Number(scenarioBalance) * 100);
-      if (scenarioService) {
-        payload.service_id = Number(scenarioService);
-        payload.auto_prolong = scenarioAuto;
-      }
-      setScenario(await api(`/customers/${id}/simulate`, { method: "POST", body: JSON.stringify(payload) }));
+      const payload = scenarioPayload();
+      const result = await api(`/customers/${id}/simulate`, { method: "POST", body: JSON.stringify(payload) });
+      setScenario({ ...result, customer_id: id, inputs: JSON.stringify(payload) });
     } catch (error) {
       setScenarioError((error as Error).message);
     } finally {
@@ -1078,6 +1354,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
     }
   }
   async function addAction() {
+    setActionError("");
     try {
       const existing = await api("/actions");
       if (existing.items.some((item: any) => item.customer_id === id)) {
@@ -1088,7 +1365,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
       await queryClient.invalidateQueries({ queryKey: ["actions"] });
       onSuccess("Клиент добавлен в работу");
     } catch (error) {
-      setScenarioError((error as Error).message);
+      setActionError((error as Error).message);
     }
   }
   useEffect(() => {
@@ -1117,6 +1394,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
       deleted: "Удалена",
       prolong_wait: "Ожидает оплаты",
     };
+  const scenarioStale = scenario && c && (scenario.customer_id !== id || scenario.calculation_version !== c.calculation_version || scenario.inputs !== JSON.stringify(scenarioPayload()));
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside
@@ -1191,6 +1469,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
             <button className="secondary drawer-action" onClick={addAction}>
               <ClipboardList size={16} /> Добавить в работу
             </button>
+            {actionError && <ErrorBox message={actionError} />}
             <section className="scenario-panel" ref={scenarioRef}>
               <h3>Что если?</h3>
               <p>Расчёт без изменения данных и настроек.</p>
@@ -1212,9 +1491,11 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
               {scenarioService && <label className="scenario-check"><input type="checkbox" checked={scenarioAuto} onChange={(event) => setScenarioAuto(event.target.checked)} /> Включить автопродление</label>}
               <button className="primary" disabled={scenarioPending || (!scenarioService && scenarioBalance === "")} onClick={runScenario}>Рассчитать сценарий</button>
               {scenarioError && <ErrorBox message={scenarioError} />}
-              {scenario && <div className="scenario-result">
+              {scenarioStale && <p className="scenario-stale">Данные или параметры сценария изменились. Пересчитайте его.</p>}
+              {scenario && !scenarioStale && <div className="scenario-result">
                 <span>Индекс: {scenario.before.score ?? "—"} → <strong>{scenario.after.score ?? "—"}</strong></span>
                 <span>Под риском: {money(scenario.before.loss_eur)} → <strong>{money(scenario.after.loss_eur)}</strong></span>
+                <small>Расчёт #{scenario.calculation_version} · {date(scenario.as_of)} МСК · только пробный результат</small>
               </div>}
             </section>
             <h3 className="section-label">
@@ -1289,31 +1570,98 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
   );
 }
 
+function OutcomesPanel({ onSelect }: { onSelect: (id: number) => void }) {
+  const query = useQuery({ queryKey: ['action-outcomes'], queryFn: () => api('/actions/outcomes'), refetchInterval: 5000 });
+  if (query.isError) return <ErrorBox message={query.error.message} />;
+  if (query.isPending) return <Loading />;
+  const data = query.data;
+  return <div className="outcomes-layout">
+    <section className="outcome-kpis">
+      <article className="panel outcome-kpi"><span>Продлили после контакта</span><strong>{data.renewed}</strong><small>Отмеченный факт продления</small></article>
+      <article className="panel outcome-kpi"><span>Не продлили</span><strong>{data.not_renewed}</strong><small>Отмеченный факт отказа</small></article>
+      <article className="panel outcome-kpi"><span>Ожидают результата</span><strong>{data.pending}</strong><small>Записи без отмеченного итога</small></article>
+      <article className="panel outcome-kpi"><span>Доля продлений</span><strong>{data.renewal_share_pct === null ? '—' : `${data.renewal_share_pct}%`}</strong><small>Среди {data.known_total} известных итогов</small></article>
+    </section>
+    <section className="panel outcome-history">
+      <div className="panel-heading"><div><h2>Зафиксированные результаты</h2><p>Результаты вводятся вручную в разделе «Работа с клиентами».</p></div></div>
+      {data.items.length === 0 ? <div className="empty"><CheckCircle2 size={28} /><h3>Результатов пока нет</h3><p>После общения с клиентом отметьте, продлил ли он услугу.</p></div> :
+        <div className="outcome-list">{data.items.map((item: any) => <div className="outcome-row" key={item.id}>
+          <button disabled={!item.customer} onClick={() => onSelect(item.customer_id)}>{item.customer?.email || `Клиент #${item.customer_id} · нет в текущих данных`}</button>
+          <span className={`outcome-badge outcome-${item.outcome}`}>{item.outcome === 'renewed' ? 'Продлил' : 'Не продлил'}</span>
+          <time>{item.outcome_recorded_at ? `${date(item.outcome_recorded_at)} МСК` : 'Дата неизвестна'}</time>
+        </div>)}</div>}
+      <p className="outcome-disclaimer">Эти числа показывают отмеченные итоги. Они не доказывают, что продление произошло именно благодаря контакту.</p>
+    </section>
+  </div>;
+}
+
 function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; onSuccess: (message: string) => void }) {
   const query = useQuery({ queryKey: ["actions"], queryFn: () => api("/actions"), refetchInterval: 5000 });
   const queryClient = useQueryClient();
+  const [filter, setFilter] = useState('all');
   if (query.isError) return <ErrorBox message={query.error.message} />;
   if (query.isPending) return <Loading />;
+  const items = query.data.items as any[];
+  const activeCount = items.filter((item) => item.status !== 'resolved').length;
+  const visible = filter === 'all' ? items : items.filter((item) => item.status === filter);
+  const filters = [
+    ['all', 'Все'], ['open', 'В работе'], ['contacted', 'Связались'], ['resolved', 'Завершено'],
+  ];
   return <section className="panel action-panel">
-    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Добавляйте клиентов из карточки, фиксируйте результат общения.</p></div><span className="subtle-tag">{query.data.items.length} в работе</span></div>
-    {query.data.items.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Очередь пуста</h3><p>Откройте клиента и нажмите «Добавить в работу».</p></div>}
-    <div className="action-list">{query.data.items.map((action: any) => <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={() => queryClient.invalidateQueries({ queryKey: ["actions"] })} />)}</div>
+    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Добавляйте клиентов из карточки, фиксируйте результат общения.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
+    <div className="action-filters" aria-label="Фильтр контактов">{filters.map(([key, label]) => <button key={key} type="button" className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label} <span>{key === 'all' ? items.length : items.filter((item) => item.status === key).length}</span></button>)}</div>
+    {items.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Очередь пуста</h3><p>Откройте клиента и нажмите «Добавить в работу».</p></div>}
+    {items.length > 0 && visible.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Нет записей с таким статусом</h3></div>}
+    <div className="action-list">{visible.map((action: any) => <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={() => queryClient.invalidateQueries({ queryKey: ["actions"] })} />)}</div>
   </section>;
 }
 
 function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onSelect: (id: number) => void; onSuccess: (message: string) => void; onSaved: () => void }) {
   const [status, setStatus] = useState(action.status);
   const [note, setNote] = useState(action.note);
+  const [outcome, setOutcome] = useState(action.outcome ?? 'pending');
+  const [baseVersion, setBaseVersion] = useState(action.version);
+  const [dirty, setDirty] = useState(false);
+  const [conflict, setConflict] = useState<any>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (dirty) {
+      if (action.version !== baseVersion) setConflict(action);
+    } else {
+      setStatus(action.status);
+      setNote(action.note);
+      setOutcome(action.outcome ?? 'pending');
+      setBaseVersion(action.version);
+      setConflict(null);
+    }
+  }, [action.version]);
+  function loadCurrent(current: any, keepDraft: boolean) {
+    if (!keepDraft) {
+      setStatus(current.status);
+      setNote(current.note);
+      setOutcome(current.outcome ?? 'pending');
+      setDirty(false);
+    }
+    setBaseVersion(current.version);
+    setConflict(null);
+    setError('');
+  }
   async function save() {
+    if (pending) return;
     setPending(true);
     setError("");
     try {
-      await api(`/actions/${action.customer_id}`, { method: "PUT", body: JSON.stringify({ status, note }) });
+      const saved = await api(`/actions/${action.customer_id}`, { method: "PUT", body: JSON.stringify({ status, note, outcome, expected_version: baseVersion }) });
+      setBaseVersion(saved.version);
+      setDirty(false);
+      setConflict(null);
       onSaved();
+      await queryClient.invalidateQueries({ queryKey: ['action-outcomes'] });
       onSuccess("Результат работы сохранён");
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) setConflict(cause.detail?.current ?? action);
       setError((cause as Error).message);
     } finally {
       setPending(false);
@@ -1321,15 +1669,17 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
   }
   return <article className="action-card">
     <div className="action-card-head">
-      <button onClick={() => onSelect(action.customer_id)}>{action.customer?.email ?? `Клиент #${action.customer_id}`}</button>
+      <button disabled={!action.customer} onClick={() => onSelect(action.customer_id)}>{action.customer?.email ?? `Клиент #${action.customer_id} · нет в текущих данных`}</button>
       <span>{action.customer ? <Badge level={action.customer.risk_level} /> : "Нет в текущем снимке"}</span>
     </div>
     {action.customer && <p>{action.customer.reason} · {money(action.customer.loss_eur)} под риском</p>}
     <div className="action-fields">
-      <label>Статус<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="open">В работе</option><option value="contacted">Связались</option><option value="resolved">Завершено</option></select></label>
-      <label>Заметка<textarea value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} placeholder="Что обсудили с клиентом" /></label>
+      <label>Статус<select value={status} onChange={(event) => { setStatus(event.target.value); setDirty(true); }}><option value="open">В работе</option><option value="contacted">Связались</option><option value="resolved">Завершено</option></select></label>
+      <label>Итог продления<select value={outcome} onChange={(event) => { setOutcome(event.target.value); setDirty(true); }}><option value="pending">Ожидаем</option><option value="renewed">Продлил</option><option value="not_renewed">Не продлил</option></select></label>
+      <label>Заметка<textarea value={note} maxLength={2000} onChange={(event) => { setNote(event.target.value); setDirty(true); }} placeholder="Что обсудили с клиентом" /></label>
     </div>
     {error && <ErrorBox message={error} />}
+    {conflict && <div className="action-conflict" role="alert"><strong>Запись обновилась в другой вкладке</strong><p>Актуальная заметка: {conflict.note || 'без заметки'}. Ваш черновик сохранён в форме.</p><div><button type="button" className="secondary" onClick={() => loadCurrent(conflict, false)}>Загрузить актуальное</button><button type="button" className="secondary" onClick={() => loadCurrent(conflict, true)}>Оставить мой черновик</button></div></div>}
     <div className="action-card-foot"><span>Обновлено {date(action.updated_at)} МСК</span><button className="primary" disabled={pending} onClick={save}>Сохранить</button></div>
   </article>;
 }
@@ -1505,6 +1855,128 @@ function ModelSettings({ onSuccess }: { onSuccess: (s: string) => void }) {
           </span>
         </div>
       </aside>
+    </div>
+  );
+}
+
+function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }: {
+  data: any;
+  pending: boolean;
+  error: Error | null;
+  onSaved: (updated: any) => void;
+  onSuccess: (message: string) => void;
+  onLogout: () => void;
+}) {
+  const [profile, setProfile] = useState({ login: "", display_name: "", email: "", current_password: "" });
+  const [password, setPassword] = useState({ current: "", next: "", confirm: "" });
+  const [profileError, setProfileError] = useState("");
+  const [securityError, setSecurityError] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingSecurity, setSavingSecurity] = useState(false);
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (data) setProfile({ login: data.login, display_name: data.display_name, email: data.email, current_password: "" });
+  }, [data?.login, data?.display_name, data?.email]);
+
+  async function saveProfile(event: React.FormEvent) {
+    event.preventDefault();
+    setProfileError("");
+    setSavingProfile(true);
+    try {
+      const updated = await api("/account/profile", { method: "PUT", body: JSON.stringify(profile) });
+      setProfile((current) => ({ ...current, current_password: "" }));
+      onSaved(updated);
+    } catch (cause) {
+      setProfileError((cause as Error).message);
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function changePassword(event: React.FormEvent) {
+    event.preventDefault();
+    setSecurityError("");
+    if (password.next !== password.confirm) {
+      setSecurityError("Новые пароли не совпадают");
+      return;
+    }
+    setSavingSecurity(true);
+    try {
+      await api("/account/password", { method: "POST", body: JSON.stringify({ current_password: password.current, new_password: password.next }) });
+      setPassword({ current: "", next: "", confirm: "" });
+      await qc.invalidateQueries({ queryKey: ["account"] });
+      onSuccess("Пароль изменён. Другие сеансы завершены.");
+    } catch (cause) {
+      setSecurityError((cause as Error).message);
+    } finally {
+      setSavingSecurity(false);
+    }
+  }
+
+  async function revokeSessions() {
+    setSecurityError("");
+    setSavingSecurity(true);
+    try {
+      const result = await api("/account/sessions/revoke", { method: "POST" });
+      await qc.invalidateQueries({ queryKey: ["account"] });
+      onSuccess(`Завершено других сеансов: ${result.revoked}`);
+    } catch (cause) {
+      setSecurityError((cause as Error).message);
+    } finally {
+      setSavingSecurity(false);
+    }
+  }
+
+  if (pending) return <Loading />;
+  if (error) return <ErrorBox message={error.message} />;
+  if (!data) return null;
+  return (
+    <div className="account-layout">
+      <section className="panel account-panel">
+        <div className="account-hero">
+          <span className="account-avatar">{data.display_name.slice(0, 1).toUpperCase()}</span>
+          <div><span className="eyebrow">ПРОФИЛЬ</span><h2>{data.display_name}</h2><p>@{data.login} · ID {data.id}</p></div>
+        </div>
+        <form onSubmit={saveProfile} className="account-form">
+          <h3>Данные аккаунта</h3>
+          <p>Имя показывается в панели. Email сохраняется в профиле как контактная информация.</p>
+          {profileError && <ErrorBox message={profileError} />}
+          <div className="account-fields">
+            <label>Отображаемое имя<input value={profile.display_name} onChange={(event) => setProfile({ ...profile, display_name: event.target.value })} maxLength={80} required autoComplete="name" /></label>
+            <label>Логин<input value={profile.login} onChange={(event) => setProfile({ ...profile, login: event.target.value })} minLength={3} maxLength={40} pattern="[A-Za-z0-9_.-]+" required autoComplete="username" /></label>
+            <label className="account-field-wide">Контактный email<input value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} type="email" maxLength={254} placeholder="name@example.com" autoComplete="email" /></label>
+            {profile.login !== data.login && <label className="account-field-wide">Текущий пароль для смены логина<input value={profile.current_password} onChange={(event) => setProfile({ ...profile, current_password: event.target.value })} type="password" required autoComplete="current-password" /></label>}
+          </div>
+          <button className="primary" disabled={savingProfile}><Check size={17} />{savingProfile ? "Сохраняем…" : "Сохранить профиль"}</button>
+        </form>
+      </section>
+      <div className="account-side">
+        <section className="panel account-panel">
+          <div className="account-section-heading"><LockKeyhole size={20} /><div><h3>Безопасность и вход</h3><p>Смена пароля завершит все другие сеансы.</p></div></div>
+          {securityError && <ErrorBox message={securityError} />}
+          <form onSubmit={changePassword} className="account-form account-password-form">
+            <label>Текущий пароль<input value={password.current} onChange={(event) => setPassword({ ...password, current: event.target.value })} type="password" autoComplete="current-password" required /></label>
+            <label>Новый пароль<input value={password.next} onChange={(event) => setPassword({ ...password, next: event.target.value })} type="password" minLength={12} autoComplete="new-password" required /></label>
+            <label>Повторите новый пароль<input value={password.confirm} onChange={(event) => setPassword({ ...password, confirm: event.target.value })} type="password" minLength={12} autoComplete="new-password" required /></label>
+            <button className="primary" disabled={savingSecurity}><ShieldCheck size={17} />Изменить пароль</button>
+          </form>
+        </section>
+        <section className="panel account-panel">
+          <div className="account-section-heading"><Activity size={20} /><div><h3>Активность аккаунта</h3><p>Информация о ваших сеансах.</p></div></div>
+          <dl className="account-facts">
+            <div><dt>Последний вход</dt><dd>{data.last_login_at ? `${date(data.last_login_at)} МСК` : "Нет данных"}</dd></div>
+            <div><dt>Текущий сеанс до</dt><dd>{date(data.session_expires_at)} МСК</dd></div>
+            <div><dt>Активных сеансов</dt><dd>{data.active_sessions}</dd></div>
+            <div><dt>Запоминание входа</dt><dd>{data.remember_me ? "Включено" : "До перезагрузки страницы"}</dd></div>
+            <div><dt>Пароль изменён</dt><dd>{data.password_changed_at ? `${date(data.password_changed_at)} МСК` : "Не менялся"}</dd></div>
+            <div><dt>Единый вход</dt><dd>{data.oidc_available ? "Подключён" : "Ожидает настройки провайдера"}</dd></div>
+          </dl>
+          <div className="account-actions">
+            <button className="secondary" onClick={revokeSessions} disabled={savingSecurity || data.active_sessions < 2}>Завершить другие сеансы</button>
+            <button className="secondary" onClick={onLogout}><LogOut size={16} /> Выйти из аккаунта</button>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

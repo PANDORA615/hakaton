@@ -4,9 +4,11 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
+from urllib.parse import urlsplit
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -14,16 +16,20 @@ from pathlib import Path
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, InvalidHashError
+from authlib.integrations.starlette_client import OAuth
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, Query
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator, field_validator
 from prometheus_client import CollectorRegistry, Gauge, Counter, generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy import select, insert, delete, text
+from sqlalchemy import update, func
+from sqlalchemy.exc import IntegrityError
+from starlette.middleware.sessions import SessionMiddleware
 from . import db
 from .schemas import Snapshot
-from .store import Store, Conflict
+from .store import Store, Conflict, ActionConflict
 
 COOKIE = 'aeza_session'
 logger = logging.getLogger(__name__)
@@ -32,6 +38,33 @@ logger = logging.getLogger(__name__)
 class Login(BaseModel):
     login: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=1, max_length=1024)
+    remember_me: bool = False
+
+
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    login: str = Field(min_length=3, max_length=40, pattern=r'^[A-Za-z0-9_.-]+$')
+    display_name: str = Field(min_length=1, max_length=80)
+    email: str = Field(default='', max_length=254)
+    current_password: str | None = None
+
+    @field_validator('display_name', 'email')
+    @classmethod
+    def trim_fields(cls, value):
+        return value.strip()
+
+    @field_validator('email')
+    @classmethod
+    def valid_email(cls, value):
+        if value and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', value):
+            raise ValueError('Укажите корректный email')
+        return value
+
+
+class PasswordChange(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=12, max_length=1024)
 
 
 class SettingsPatch(BaseModel):
@@ -65,6 +98,8 @@ class ActionRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     status: str = Field(pattern='^(open|contacted|resolved)$')
     note: str = Field(default='', max_length=2000)
+    outcome: str | None = Field(default=None, pattern='^(pending|renewed|not_renewed)$')
+    expected_version: int | None = Field(default=None, ge=0)
 
 
 def create_app(database_url=None, data_path=None, password=None, fixed_as_of=None, testing=False):
@@ -72,22 +107,50 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     engine = db.make_engine(url)
     if testing:
         db.metadata.create_all(engine)
-    fixed = fixed_as_of or os.environ.get('ANALYSIS_AS_OF')
+    fixed = fixed_as_of or os.environ.get('ANALYSIS_AS_OF', '2026-10-19T15:00:00Z')
     if isinstance(fixed, str):
-        fixed = datetime.fromisoformat(fixed.replace('Z', '+00:00'))
-        if fixed.tzinfo is None:
+        try:
+            fixed = datetime.fromisoformat(fixed.replace('Z', '+00:00')) if fixed else None
+        except ValueError as exc:
+            raise ValueError('ANALYSIS_AS_OF must be empty for live mode or an ISO date/time with timezone') from exc
+        if fixed is not None and fixed.tzinfo is None:
             raise ValueError('ANALYSIS_AS_OF requires timezone')
     if fixed:
         if fixed.tzinfo is None:
             raise ValueError('Analysis time requires timezone')
         fixed = fixed.astimezone(timezone.utc)
     store = Store(engine, fixed)
+    try:
+        recalc_interval = float(os.environ.get('RECALC_INTERVAL_SECONDS', '60'))
+    except ValueError as exc:
+        raise ValueError('RECALC_INTERVAL_SECONDS must be between 1 and 3600') from exc
+    if not 1 <= recalc_interval <= 3600:
+        raise ValueError('RECALC_INTERVAL_SECONDS must be between 1 and 3600')
     admin_password = password or os.environ.get('ADMIN_PASSWORD', '')
     if len(admin_password) < 12:
         raise ValueError('ADMIN_PASSWORD must contain at least 12 characters')
     fixture = data_path or os.environ.get('DATA_PATH', str(Path(__file__).resolve().parents[2] / 'data/original/data.json'))
     metrics_token = os.environ.get('METRICS_TOKEN', '')
     secure = os.environ.get('COOKIE_SECURE', 'false').lower() == 'true'
+    oidc_names = ('OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_CALLBACK_URL',
+                  'OIDC_ALLOWED_SUB', 'OIDC_SESSION_SECRET')
+    oidc_config = {name: os.environ.get(name, '').strip() for name in oidc_names}
+    oidc_enabled = all(oidc_config.values())
+    if any(oidc_config.values()) and not oidc_enabled:
+        raise ValueError('Complete all OIDC settings or leave them all empty')
+    if oidc_enabled:
+        secure = True
+        issuer = urlsplit(oidc_config['OIDC_ISSUER_URL'])
+        callback = urlsplit(oidc_config['OIDC_CALLBACK_URL'])
+        if issuer.scheme != 'https' or not issuer.netloc or issuer.query or issuer.fragment:
+            raise ValueError('OIDC_ISSUER_URL must be an HTTPS issuer URL')
+        if callback.scheme != 'https' or not callback.netloc or callback.path != '/api/v1/auth/oidc/callback' or callback.query or callback.fragment:
+            raise ValueError('OIDC_CALLBACK_URL must be an HTTPS callback URL with the expected path')
+        if len(oidc_config['OIDC_SESSION_SECRET']) < 32:
+            raise ValueError('OIDC_SESSION_SECRET must contain at least 32 characters')
+        allowed_subs = {item.strip() for item in oidc_config['OIDC_ALLOWED_SUB'].split(',') if item.strip()}
+        if not allowed_subs:
+            raise ValueError('OIDC_ALLOWED_SUB must contain at least one subject')
     attempts = defaultdict(deque)
     attempts_lock = threading.Lock()
 
@@ -99,7 +162,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         async def tick():
             while not stop.is_set():
                 try:
-                    await asyncio.wait_for(stop.wait(), timeout=60)
+                    await asyncio.wait_for(stop.wait(), timeout=recalc_interval)
                 except asyncio.TimeoutError:
                     if not store.fixed_as_of:
                         try:
@@ -114,6 +177,13 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
 
     app = FastAPI(title='Aéza Retention API', version='0.4.0', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
+    if oidc_enabled:
+        app.add_middleware(SessionMiddleware, secret_key=oidc_config['OIDC_SESSION_SECRET'],
+                           session_cookie='aeza_oidc_flow', max_age=600, same_site='lax', https_only=True)
+        oauth = OAuth()
+        oauth.register('provider', client_id=oidc_config['OIDC_CLIENT_ID'], client_secret=oidc_config['OIDC_CLIENT_SECRET'],
+                       server_metadata_url=oidc_config['OIDC_ISSUER_URL'].rstrip('/') + '/.well-known/openid-configuration',
+                       client_kwargs={'scope': 'openid profile email', 'code_challenge_method': 'S256'})
 
     @app.middleware('http')
     async def limits_and_headers(request, call_next):
@@ -160,7 +230,11 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     @app.post('/api/v1/auth/login', tags=['auth'])
     def login(body: Login, response: Response, request: Request):
         origin = request.headers.get('origin')
-        if origin and origin.rstrip('/') != str(request.base_url).rstrip('/'):
+        allowed_origins = {str(request.base_url).rstrip('/')}
+        if oidc_enabled:
+            callback_url = urlsplit(oidc_config['OIDC_CALLBACK_URL'])
+            allowed_origins.add(f'{callback_url.scheme}://{callback_url.netloc}')
+        if origin and origin.rstrip('/') not in allowed_origins:
             raise HTTPException(403, 'Origin не совпадает')
         ip = request.client.host if request.client else 'unknown'
         with attempts_lock:
@@ -183,22 +257,134 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             pass
         if not valid:
             raise HTTPException(401, 'Неверный логин или пароль')
+        return issue_session(user, response, request, remember_me=body.remember_me)
+
+    def issue_session(user, response, request, remember_me=False):
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
+        lifetime = timedelta(days=30) if remember_me else timedelta(hours=8)
         with engine.begin() as conn:
             conn.execute(delete(db.sessions).where(db.sessions.c.expires < datetime.now(timezone.utc).isoformat()))
             old = request.cookies.get(COOKIE)
             if old:
                 conn.execute(delete(db.sessions).where(db.sessions.c.token_hash == hashlib.sha256(old.encode()).hexdigest()))
             conn.execute(insert(db.sessions).values(token_hash=hashlib.sha256(token.encode()).hexdigest(), user_id=user['id'],
-                         csrf=csrf, expires=(datetime.now(timezone.utc) + timedelta(hours=8)).isoformat()))
-        response.set_cookie(COOKIE, token, httponly=True, secure=secure, samesite='strict', max_age=28800, path='/')
-        return {'login': user['login'], 'csrf_token': csrf}
+                         csrf=csrf, expires=(datetime.now(timezone.utc) + lifetime).isoformat(), remember_me=remember_me))
+            now = datetime.now(timezone.utc).isoformat()
+            profile = conn.execute(select(db.user_profiles.c.user_id).where(db.user_profiles.c.user_id == user['id'])).first()
+            if profile:
+                conn.execute(update(db.user_profiles).where(db.user_profiles.c.user_id == user['id']).values(last_login_at=now))
+            else:
+                conn.execute(insert(db.user_profiles).values(user_id=user['id'], display_name=user['login'],
+                                                       updated_at=now, last_login_at=now))
+        cookie_options = {'max_age': int(lifetime.total_seconds())} if remember_me else {}
+        response.set_cookie(COOKIE, token, httponly=True, secure=secure, samesite='strict', path='/', **cookie_options)
+        return {'login': user['login'], 'csrf_token': csrf, 'remember_me': remember_me}
 
     app.state.dummy_hash = PasswordHasher().hash(secrets.token_urlsafe(24))
 
+    @app.get('/api/v1/auth/methods', tags=['auth'])
+    def auth_methods():
+        return {'password': True, 'oidc': oidc_enabled}
+
+    if oidc_enabled:
+        @app.get('/api/v1/auth/oidc/start', tags=['auth'])
+        async def oidc_start(request: Request, remember_me: bool = False):
+            request.session.clear()
+            request.session['remember_me'] = remember_me
+            return await oauth.provider.authorize_redirect(request, oidc_config['OIDC_CALLBACK_URL'])
+
+        @app.get('/api/v1/auth/oidc/callback', tags=['auth'])
+        async def oidc_callback(request: Request):
+            try:
+                token = await oauth.provider.authorize_access_token(request)
+                subject = token.get('userinfo', {}).get('sub')
+                if not subject or subject not in allowed_subs:
+                    raise ValueError('OIDC subject is not authorized')
+                with engine.connect() as conn:
+                    user = conn.execute(select(db.users).order_by(db.users.c.id).limit(1)).mappings().first()
+                if user is None:
+                    raise ValueError('Local administrator is unavailable')
+                response = RedirectResponse('/?oidc_login=success', status_code=303)
+                issue_session(user, response, request, remember_me=request.session.get('remember_me', False))
+                return response
+            except Exception:
+                logger.exception('OIDC sign-in failed')
+                return RedirectResponse('/?auth_error=oidc_failed', status_code=303)
+            finally:
+                request.session.clear()
+
     @app.get('/api/v1/auth/me', tags=['auth'])
     def me(user=Depends(authorized)):
-        return {'login': user['login'], 'csrf_token': user['csrf']}
+        return {'login': user['login'], 'csrf_token': user['csrf'], 'remember_me': user['remember_me']}
+
+    def account_info(session):
+        with engine.connect() as conn:
+            profile = conn.execute(select(db.user_profiles).where(db.user_profiles.c.user_id == session['user_id'])).mappings().first()
+            login_name = conn.execute(select(db.users.c.login).where(db.users.c.id == session['user_id'])).scalar_one()
+            active_sessions = conn.execute(select(func.count()).select_from(db.sessions).where(
+                db.sessions.c.user_id == session['user_id'],
+                db.sessions.c.expires > datetime.now(timezone.utc).isoformat())).scalar_one()
+        return {'id': session['user_id'], 'login': login_name,
+                'display_name': profile['display_name'] if profile else login_name,
+                'email': profile['email'] if profile else '',
+                'profile_updated_at': profile['updated_at'] if profile else None,
+                'last_login_at': profile['last_login_at'] if profile else None,
+                'password_changed_at': profile['password_changed_at'] if profile else None,
+                'session_expires_at': session['expires'], 'remember_me': session['remember_me'], 'active_sessions': active_sessions,
+                'oidc_available': oidc_enabled}
+
+    @app.get('/api/v1/account', tags=['account'])
+    def account(session=Depends(authorized)):
+        return account_info(session)
+
+    @app.put('/api/v1/account/profile', tags=['account'])
+    def save_profile(body: ProfileUpdate, session=Depends(authorized)):
+        name = body.display_name.strip()
+        if not name:
+            raise HTTPException(422, 'Имя не может быть пустым')
+        with engine.begin() as conn:
+            current = conn.execute(select(db.users).where(db.users.c.id == session['user_id'])).mappings().one()
+            if body.login != current['login']:
+                try:
+                    PasswordHasher().verify(current['password_hash'], body.current_password or '')
+                except (VerificationError, InvalidHashError):
+                    raise HTTPException(403, 'Для смены логина укажите текущий пароль')
+                try:
+                    conn.execute(update(db.users).where(db.users.c.id == session['user_id']).values(login=body.login))
+                except IntegrityError:
+                    raise HTTPException(409, 'Логин уже занят')
+            now = datetime.now(timezone.utc).isoformat()
+            existing = conn.execute(select(db.user_profiles.c.user_id).where(db.user_profiles.c.user_id == session['user_id'])).first()
+            values = {'display_name': name, 'email': body.email, 'updated_at': now}
+            if existing:
+                conn.execute(update(db.user_profiles).where(db.user_profiles.c.user_id == session['user_id']).values(**values))
+            else:
+                conn.execute(insert(db.user_profiles).values(user_id=session['user_id'], **values))
+        return account_info(session)
+
+    @app.post('/api/v1/account/password', tags=['account'])
+    def change_password(body: PasswordChange, session=Depends(authorized)):
+        with engine.begin() as conn:
+            current_hash = conn.execute(select(db.users.c.password_hash).where(db.users.c.id == session['user_id'])).scalar_one()
+            try:
+                PasswordHasher().verify(current_hash, body.current_password)
+            except (VerificationError, InvalidHashError):
+                raise HTTPException(403, 'Текущий пароль неверен')
+            if body.current_password == body.new_password:
+                raise HTTPException(422, 'Новый пароль должен отличаться от текущего')
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(update(db.users).where(db.users.c.id == session['user_id']).values(password_hash=PasswordHasher().hash(body.new_password)))
+            conn.execute(update(db.user_profiles).where(db.user_profiles.c.user_id == session['user_id']).values(password_changed_at=now))
+            conn.execute(delete(db.sessions).where(db.sessions.c.user_id == session['user_id'],
+                                                   db.sessions.c.token_hash != session['token_hash']))
+        return {'ok': True, 'other_sessions_revoked': True}
+
+    @app.post('/api/v1/account/sessions/revoke', tags=['account'])
+    def revoke_other_sessions(session=Depends(authorized)):
+        with engine.begin() as conn:
+            result = conn.execute(delete(db.sessions).where(db.sessions.c.user_id == session['user_id'],
+                                                           db.sessions.c.token_hash != session['token_hash']))
+        return {'revoked': result.rowcount}
 
     @app.post('/api/v1/auth/logout', tags=['auth'])
     def logout(response: Response, user=Depends(authorized)):
@@ -249,12 +435,20 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     def actions():
         return {'items': store.actions()}
 
+    @app.get('/api/v1/actions/outcomes', dependencies=[Depends(authorized)], tags=['actions'])
+    def action_outcomes():
+        return store.action_outcomes()
+
     @app.put('/api/v1/actions/{customer_id}', dependencies=[Depends(authorized)], tags=['actions'])
     def save_action(customer_id: int, body: ActionRequest):
         try:
-            return store.save_action(customer_id, body.status, body.note)
+            return store.save_action(customer_id, body.status, body.note, body.outcome, body.expected_version)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from exc
+        except ActionConflict as exc:
+            raise HTTPException(409, {'message': str(exc), 'current': exc.current}) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.get('/api/v1/model/settings', dependencies=[Depends(authorized)], tags=['model'])
     def settings():

@@ -1,4 +1,10 @@
 let csrf = "";
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public detail: any) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 export function setCSRF(value: string) {
   csrf = value;
 }
@@ -25,10 +31,16 @@ export async function api<T = any>(
     const body = await response
       .json()
       .catch(() => ({ detail: "Сервер недоступен" }));
-    throw new Error(
+    throw new ApiError(
       typeof body.detail === "string"
         ? body.detail
-        : body.detail?.map((d: any) => d.msg).join("; ") || "Ошибка запроса",
+        : typeof body.detail?.message === "string"
+          ? body.detail.message
+          : Array.isArray(body.detail)
+            ? body.detail.map((d: any) => d.msg).join("; ")
+            : "Ошибка запроса",
+      response.status,
+      body.detail,
     );
   }
   return response.json();

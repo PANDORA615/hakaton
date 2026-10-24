@@ -1,0 +1,15 @@
+http://:8080 {
+    redir https://app.5-145-176-212.sslip.io{uri} 308
+}
+
+app.5-145-176-212.sslip.io {
+    encode zstd gzip
+    reverse_proxy frontend:80 {
+        header_up X-Forwarded-Proto https
+    }
+}
+
+id.5-145-176-212.sslip.io {
+    encode zstd gzip
+    reverse_proxy dex:5556
+}
