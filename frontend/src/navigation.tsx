@@ -29,6 +29,7 @@ export const HELP_ENTRIES: Entry[] = [
 
 export const GUIDE_ENTRIES = ['overview', 'customers', 'search', 'actions', 'settings', 'source', 'outcomes', 'appearance']
   .map(id => HELP_ENTRIES.find(entry => entry.id === id)!);
+const GUIDE_FOX_STATES = ['assistant', 'thinking', 'laptop', 'idea', 'thinking', 'laptop', 'celebrate', 'celebrate'] as const;
 
 export function GlobalSearch({ language, open, onOpenChange, onNavigate, onCustomer }: {
   language: Language; open: boolean; onOpenChange: (open: boolean) => void;
@@ -100,6 +101,8 @@ export function HelpCenter({ language, onGo, onStartGuide }: { language: Languag
 
 export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { language: Language; step: number; onPrevious: () => void; onNext: () => void; onClose: () => void }) {
   const entry = GUIDE_ENTRIES[step];
+  const foxState = GUIDE_FOX_STATES[step] || 'assistant';
+  const foxSource = `/fox-${foxState}.png`;
   const first = step === 0;
   const last = step === GUIDE_ENTRIES.length - 1;
   const close = useRef<HTMLButtonElement>(null);
@@ -160,8 +163,8 @@ export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { l
       <div className="guide-pointer"><ArrowLeft aria-hidden="true" /></div>
     </div>}
     <section ref={dialog} className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-description">
-      <img className={`guide-fox guide-fox-${step % 3}`} src="/fox-assistant.png" alt="" aria-hidden="true" />
-      <div className="guide-header"><span><img src="/fox-assistant.png" alt="" aria-hidden="true" /> {language === 'ru' ? 'Лисёнок Aéza' : 'Aéza fox'}</span><button ref={close} className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть помощника' : 'Close assistant'}><X size={18} /></button></div>
+      <img key={foxState} className={`guide-fox guide-fox-${foxState}`} src={foxSource} alt="" aria-hidden="true" />
+      <div className="guide-header"><span><img key={`icon-${foxState}`} src={foxSource} alt="" aria-hidden="true" /> {language === 'ru' ? 'Лисёнок Aéza' : 'Aéza fox'}</span><button ref={close} className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть помощника' : 'Close assistant'}><X size={18} /></button></div>
       <div className="guide-progress" aria-label={`${step + 1} / ${GUIDE_ENTRIES.length}`}>{GUIDE_ENTRIES.map((item, index) => <i key={item.id} className={index <= step ? 'active' : ''} />)}</div>
       <small>{language === 'ru' ? `Шаг ${step + 1} из ${GUIDE_ENTRIES.length}` : `Step ${step + 1} of ${GUIDE_ENTRIES.length}`}</small>
       <h2 id="guide-title">{entry.title[language]}</h2>

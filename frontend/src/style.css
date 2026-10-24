@@ -3775,8 +3775,10 @@ body,
 .guide-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-end; justify-content: flex-end; padding: 24px; background: #0009; backdrop-filter: blur(3px); }
 .guide-dialog { position: relative; z-index: 3; width: min(100%, 430px); max-height: min(90dvh, 650px); overflow: visible; padding: 22px; border: 1px solid var(--border); border-radius: 24px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 65px #0005; }
 .guide-fox { position: absolute; left: 22px; top: -118px; width: 145px; height: 145px; object-fit: contain; image-rendering: pixelated; pointer-events: none; filter: drop-shadow(0 12px 13px #0008); animation: fox-float 2.6s ease-in-out infinite; }
-.guide-fox-1 { rotate: -2deg; }
-.guide-fox-2 { scale: -1 1; }
+.guide-fox-thinking { animation-name: fox-think; }
+.guide-fox-idea { animation-name: fox-idea; }
+.guide-fox-celebrate { animation-name: fox-celebrate; }
+.guide-fox-laptop { animation-name: fox-work; }
 .guide-spotlight { position: fixed; z-index: 2; pointer-events: none; padding: 12px 14px; border: 2px solid #42e52f; border-radius: 15px; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 5px #42e52f26, 0 0 34px #42e52f70, 0 14px 35px #0005; animation: guide-spotlight-in 240ms ease-out; }
 .guide-spotlight-copy { display: grid; gap: 4px; }
 .guide-spotlight-copy > span { color: #26bd1c; font-size: 9px; font-weight: 900; letter-spacing: 2.1px; }
@@ -3787,6 +3789,10 @@ body,
 @keyframes guide-spotlight-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 @keyframes fox-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -7px; } }
 @keyframes fox-wave { 0%, 100% { transform: rotate(0); } 35% { transform: rotate(-8deg) scale(1.05); } 70% { transform: rotate(6deg); } }
+@keyframes fox-think { 0%, 100% { translate: 0 0; rotate: 0deg; } 50% { translate: 0 -5px; rotate: -2deg; } }
+@keyframes fox-idea { 0%, 100% { translate: 0 0; scale: 1; } 45% { translate: 0 -9px; scale: 1.04; } 60% { scale: 1; } }
+@keyframes fox-celebrate { 0%, 100% { translate: 0 0; rotate: 0deg; } 30% { translate: 0 -10px; rotate: -3deg; } 60% { translate: 0 -4px; rotate: 3deg; } }
+@keyframes fox-work { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
 .guide-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .guide-header span { display: inline-flex; align-items: center; gap: 8px; color: var(--orange); font-size: 12px; font-weight: 800; }
 .guide-header span img { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; }
