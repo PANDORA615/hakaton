@@ -433,7 +433,7 @@ function App() {
     document.documentElement.dataset.theme = resolvedTheme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       "content",
-      resolvedTheme === "dark" ? "#141218" : "#f8f6f4",
+      resolvedTheme === "dark" ? "#090909" : "#f8f6f4",
     );
     if (theme === "system") localStorage.removeItem("aeza-theme-preference");
     else localStorage.setItem("aeza-theme-preference", theme);
@@ -518,6 +518,19 @@ function App() {
     setMobile(false);
     setProfileMenuOpen(false);
   }
+  useEffect(() => {
+    if (!mobile) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobile(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobile]);
   async function changeHorizon(days: number) {
     setHorizonPending(true);
     try {
@@ -578,7 +591,7 @@ function App() {
           onClick={() => setMobile(false)}
         />
       )}
-      <aside className={"sidebar " + (mobile ? "open" : "")}>
+      <aside className={"sidebar " + (mobile ? "open" : "")} id="mobile-navigation">
         <Logo />
         <div className="workspace">
           <span className="workspace-icon">
@@ -637,6 +650,8 @@ function App() {
             <button
               className="menu-btn icon-btn"
               aria-label="Открыть навигацию"
+              aria-expanded={mobile}
+              aria-controls="mobile-navigation"
               onClick={() => setMobile(true)}
             >
               <Menu size={20} />
@@ -674,7 +689,7 @@ function App() {
               onToggle={toggleTheme}
             />
             <div className="profile-menu" onMouseEnter={() => setProfileMenuOpen(true)} onMouseLeave={() => setProfileMenuOpen(false)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === 'Escape') setProfileMenuOpen(false); }}>
-              <button className="small-avatar" aria-label="Меню аккаунта" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen(true)} onFocus={() => setProfileMenuOpen(true)}>{(accountSummary.data?.display_name || user.login).slice(0, 1).toUpperCase()}</button>
+              <button className="small-avatar" aria-label="Меню аккаунта" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => window.matchMedia("(hover: hover)").matches ? true : !open)}>{(accountSummary.data?.display_name || user.login).slice(0, 1).toUpperCase()}</button>
               {profileMenuOpen && <div className="profile-menu-panel" role="menu">
                 <div className="profile-menu-user"><strong>{accountSummary.data?.display_name || "Администратор"}</strong><span>{user.login}</span></div>
                 <button role="menuitem" onClick={() => navigate("account")}><Settings2 size={17} /> Настройки аккаунта</button>
@@ -1185,7 +1200,8 @@ function CustomerTable({
         </div>
       </div>
       {query.isError && <ErrorBox message={query.error.message} />}
-      <div className="table-scroll">
+      <p className="table-scroll-hint">Таблица прокручивается в стороны →</p>
+      <div className="table-scroll" tabIndex={0} aria-label="Таблица клиентов, прокручивается горизонтально">
         <table>
           <thead>
             <tr>
