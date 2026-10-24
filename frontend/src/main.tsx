@@ -41,8 +41,12 @@ import {
   Sun,
   Monitor,
   ClipboardList,
+  Plus,
+  Palette,
+  Globe,
 } from "lucide-react";
-import { api, ApiError, setCSRF, levels, money, date, Level, RUB_PER_EUR, rublesFromEuro, euroCentsFromRubles } from "./api";
+import { api, ApiError, setCSRF, levels, money, date, Level, setDisplayPreferences, displayFromEuro, euroCentsFromDisplay, currencySymbol, formatReason, Currency, Language, FxRates } from "./api";
+import { installTranslations } from "./i18n";
 import "./style.css";
 
 const client = new QueryClient({
@@ -57,7 +61,7 @@ const levelColors: Record<Level, string> = {
   low: "#43a887",
   unknown: "#a8adb7",
 };
-type View = "overview" | "customers" | "settings" | "source" | "actions" | "outcomes" | "account";
+type View = "overview" | "customers" | "settings" | "source" | "actions" | "outcomes" | "account" | "appearance";
 type Theme = "system" | "light" | "dark";
 
 function initialTheme(): Theme {
@@ -278,12 +282,16 @@ function LoginPage({
   theme,
   systemDark,
   onToggleTheme,
+  language,
+  onLanguage,
   authReady,
 }: {
   onLogin: (u: any) => void;
   theme: Theme;
   systemDark: boolean;
   onToggleTheme: () => void;
+  language: Language;
+  onLanguage: (value: Language) => void;
   authReady: boolean;
 }) {
   const [login, setLogin] = useState("admin"),
@@ -344,12 +352,13 @@ function LoginPage({
             Решения, основанные на данных.
           </p>
           <span className="story-footer">
-            <Activity size={17} /> Aéza Retention · версия 0.4
+            <Activity size={17} /> Aéza Retention · beta 0.8
           </span>
         </div>
       </div>
       <div className="login-form-area">
         <div className="login-theme-toggle">
+          <button className="login-language-button" type="button" aria-label={language === 'ru' ? 'Switch to English' : 'Переключить на русский'} onClick={() => onLanguage(language === 'ru' ? 'en' : 'ru')}><Globe size={16} />{language === 'ru' ? 'EN' : 'RU'}</button>
           <ThemeToggle theme={theme} systemDark={systemDark} onToggle={onToggleTheme} />
         </div>
         <form onSubmit={submit} className="login-form">
@@ -421,6 +430,11 @@ function App() {
     [horizonPending, setHorizonPending] = useState(false),
     [toast, setToast] = useState("");
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [currency, setCurrency] = useState<Currency>(() => {
+    const saved = localStorage.getItem("aeza-currency");
+    return saved === "USD" || saved === "EUR" ? saved : "RUB";
+  });
+  const [language, setLanguage] = useState<Language>(() => localStorage.getItem("aeza-language") === "en" ? "en" : "ru");
   const [focusScenario, setFocusScenario] = useState(false);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
@@ -503,6 +517,19 @@ function App() {
     enabled: !!user,
     refetchInterval: 5000,
   });
+  const fx = useQuery<FxRates>({
+    queryKey: ["fx-rates"],
+    queryFn: () => api("/fx/rates"),
+    enabled: !!user,
+    refetchInterval: 60 * 60 * 1000,
+  });
+  setDisplayPreferences(currency, language, fx.data);
+  useEffect(() => {
+    localStorage.setItem("aeza-currency", currency);
+    localStorage.setItem("aeza-language", language);
+    document.documentElement.lang = language;
+  }, [currency, language]);
+  useEffect(() => installTranslations(language), [language]);
   const accountSummary = useQuery({
     queryKey: ["account"],
     queryFn: () => api("/account"),
@@ -585,6 +612,8 @@ function App() {
         theme={theme}
         systemDark={systemDark}
         onToggleTheme={toggleTheme}
+        language={language}
+        onLanguage={setLanguage}
         authReady={authReady}
       />
     );
@@ -674,6 +703,7 @@ function App() {
                   actions: "Работа с клиентами",
                   outcomes: "Результаты",
                   account: "Аккаунт",
+                  appearance: "Настройки сайта",
                 }[view]
               }
             </strong>
@@ -699,6 +729,7 @@ function App() {
               {profileMenuOpen && <div className="profile-menu-panel" role="menu">
                 <div className="profile-menu-user"><strong>{accountSummary.data?.display_name || "Администратор"}</strong><span>{user.login}</span></div>
                 <button role="menuitem" onClick={() => navigate("account")}><Settings2 size={17} /> Настройки аккаунта</button>
+                <button role="menuitem" onClick={() => navigate("appearance")}><Palette size={17} /> Настройки сайта</button>
                 <button role="menuitem" onClick={() => navigate("settings")}><SlidersHorizontal size={17} /> Модель риска</button>
                 <button role="menuitem" onClick={() => { setProfileMenuOpen(false); logout(); }}><LogOut size={17} /> Выйти</button>
               </div>}
@@ -720,6 +751,7 @@ function App() {
                     actions: "Работа с клиентами",
                     outcomes: "Результаты",
                     account: "Аккаунт",
+                    appearance: "Настройки сайта",
                   }[view]
                 }
               </h1>
@@ -733,6 +765,7 @@ function App() {
                     actions: "Контакты и результаты работы с клиентами.",
                     outcomes: "Фактически отмеченные продления после контакта.",
                     account: "Профиль, безопасность и способы входа.",
+                    appearance: "Тема, язык и валюта отображения.",
                   }[view]
                 }
               </p>
@@ -771,6 +804,8 @@ function App() {
               <>
                 <Overview
                   data={summary.data}
+                  currency={currency}
+                  fx={fx.data}
                   onCustomers={() => navigate("customers")}
                   onSource={() => navigate("source")}
                 />
@@ -779,7 +814,8 @@ function App() {
             ) : (
               <Loading />
             ))}
-          {view === "customers" && <CustomerTable onSelect={openCustomer} />}
+          {view === "customers" && <CustomerTable onSelect={openCustomer} sourceVersion={summary.data?.source_version} onCreated={(id) => { qc.invalidateQueries(); setToast(`Клиент #${id} добавлен в реестр`); openCustomer(id); }} />}
+          {view === "appearance" && <SitePreferences theme={theme} onTheme={setTheme} currency={currency} onCurrency={setCurrency} language={language} onLanguage={setLanguage} fx={fx.data} onRefresh={() => qc.invalidateQueries({ queryKey: ["fx-rates"] })} />}
           {view === "settings" && <ModelSettings onSuccess={setToast} />}
           {view === "source" && (
             <SourcePanel summary={summary.data} onSuccess={setToast} />
@@ -798,7 +834,7 @@ function App() {
         </main>
       </div>
       {customerId !== null && (
-        <CustomerDrawer key={customerId} id={customerId} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
+        <CustomerDrawer key={customerId} id={customerId} currency={currency} fx={fx.data} focusScenario={focusScenario} onClose={() => setCustomerId(null)} onSuccess={setToast} />
       )}
       {toast && (
         <div className="toast" role="status">
@@ -815,10 +851,14 @@ function App() {
 
 function Overview({
   data,
+  currency,
+  fx,
   onCustomers,
   onSource,
 }: {
   data: any;
+  currency: Currency;
+  fx?: FxRates;
   onCustomers: () => void;
   onSource: () => void;
 }) {
@@ -837,7 +877,7 @@ function Overview({
     .join(",");
   return (
     <>
-      <p className="currency-note">Суммы в рублях · курс ЦБ РФ на 24.10.2026: €1 = {RUB_PER_EUR.toLocaleString("ru-RU", { minimumFractionDigits: 4 })} ₽</p>
+      <p className="currency-note">Валюта: {currency} · {currency === "EUR" ? "исходные данные в евро" : `курс ЦБ РФ на ${fx?.rate_date || "24.10.2026"}: €1 = ${(fx?.rates_rub.EUR || 90.2429).toFixed(4)} ₽${currency === "USD" ? `, $1 = ${(fx?.rates_rub.USD || 80.5381).toFixed(4)} ₽` : ""}`}{fx?.stale ? " · ожидается обновление курса" : ""}</p>
       <section className="kpi-grid">
         <div className="kpi kpi-main">
           <div className="kpi-top">
@@ -969,7 +1009,7 @@ function Overview({
           <div className="panel-heading">
             <div>
               <h2>Прогноз по дням</h2>
-              <p>Платежи и сценарная сумма под риском, ₽</p>
+              <p>Платежи и сценарная сумма под риском, {currencySymbol()}</p>
             </div>
             <span className="chart-key">
               <i />
@@ -982,7 +1022,7 @@ function Overview({
             <div className="chart-gridlines">
               <span>{money(max)}</span>
               <span>{money(max / 2)}</span>
-              <span>0 ₽</span>
+              <span>0 {currencySymbol()}</span>
             </div>
             <div className="bars">
               {calendar.map((d: any) => (
@@ -1143,18 +1183,91 @@ function RiskLevelFilter({ value, onChange }: { value: string; onChange: (value:
   );
 }
 
+function SitePreferences({ theme, onTheme, currency, onCurrency, language, onLanguage, fx, onRefresh }: {
+  theme: Theme; onTheme: (value: Theme) => void;
+  currency: Currency; onCurrency: (value: Currency) => void;
+  language: Language; onLanguage: (value: Language) => void;
+  fx?: FxRates; onRefresh: () => void;
+}) {
+  return <div className="preferences-grid">
+    <section className="panel preference-card">
+      <div className="panel-heading"><div><h2><Palette size={20} /> Оформление</h2><p>Подберите вид сайта для своего устройства.</p></div></div>
+      <div className="choice-row" role="group" aria-label="Тема сайта">
+        {([['system', Monitor, 'Системная'], ['light', Sun, 'Светлая'], ['dark', Moon, 'Тёмная']] as const).map(([value, Icon, label]) =>
+          <button key={value} className={theme === value ? 'choice active' : 'choice'} aria-pressed={theme === value} onClick={() => onTheme(value)}><Icon size={19} />{label}</button>)}
+      </div>
+    </section>
+    <section className="panel preference-card">
+      <div className="panel-heading"><div><h2><Globe size={20} /> Язык</h2><p>Язык интерфейса сохраняется на этом устройстве.</p></div></div>
+      <div className="choice-row" role="group" aria-label="Язык интерфейса">
+        <button className={language === 'ru' ? 'choice active' : 'choice'} aria-pressed={language === 'ru'} onClick={() => onLanguage('ru')}>Русский</button>
+        <button className={language === 'en' ? 'choice active' : 'choice'} aria-pressed={language === 'en'} onClick={() => onLanguage('en')}>English</button>
+      </div>
+    </section>
+    <section className="panel preference-card preference-wide">
+      <div className="panel-heading"><div><h2>Валюта отображения</h2><p>Расчёты и исходные данные остаются в евро. Меняются только отображаемые суммы и ввод сценария.</p></div></div>
+      <div className="choice-row" role="group" aria-label="Валюта отображения">
+        {([['RUB','₽ Рубли'], ['USD','$ Доллары'], ['EUR','€ Евро']] as const).map(([value,label]) =>
+          <button key={value} className={currency === value ? 'choice active' : 'choice'} aria-pressed={currency === value} onClick={() => onCurrency(value)}>{label}</button>)}
+      </div>
+      <div className="fx-status"><span>ЦБ РФ · дата курса: {fx?.rate_date || '24.10.2026'}{fx?.stale ? ' · резервный курс, ожидается обновление' : ''}</span><span>€1 = {(fx?.rates_rub.EUR || 90.2429).toFixed(4)} ₽ · $1 = {(fx?.rates_rub.USD || 80.5381).toFixed(4)} ₽</span><button className="secondary" onClick={onRefresh}><RefreshCw size={15} /> Проверить курс</button></div>
+    </section>
+  </div>;
+}
+
+function NewCustomerDialog({ sourceVersion, onClose, onCreated }: { sourceVersion: number; onClose: () => void; onCreated: (id: number) => void }) {
+  const [email, setEmail] = useState('');
+  const [balance, setBalance] = useState('0');
+  const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', close);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', close); };
+  }, [onClose]);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true); setError('');
+    try {
+      const cents = euroCentsFromDisplay(Number(balance));
+      if (!Number.isSafeInteger(cents) || cents < 0) throw new Error('Проверьте сумму баланса');
+      const result = await api('/customers', { method: 'POST', body: JSON.stringify({ email: email.trim(), balance_cents: cents, expected_source_version: sourceVersion }) });
+      onCreated(result.id);
+    } catch (cause) { setError((cause as Error).message); } finally { setPending(false); }
+  }
+  return <div className="drawer-overlay customer-create-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="panel customer-create-dialog" role="dialog" aria-modal="true" aria-label="Добавить клиента">
+      <div className="panel-heading"><div><h2>Новый клиент</h2><p>ID присвоится автоматически после сохранения.</p></div><button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={19} /></button></div>
+      <form onSubmit={submit} className="customer-create-form">
+        <label>Email клиента<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={320} autoFocus placeholder="client@example.com" /></label>
+        <label>Основной баланс, {currencySymbol()}<input type="number" min="0" step="0.01" value={balance} onChange={(event) => setBalance(event.target.value)} required /></label>
+        <small>Услуги можно загрузить через снимок данных. Импорт снимка полностью заменяет текущий реестр.</small>
+        {error && <ErrorBox message={error} />}
+        <button className="primary" type="submit" disabled={pending}>{pending ? 'Сохраняем…' : 'Добавить в реестр'}</button>
+      </form>
+    </section>
+  </div>;
+}
+
 function CustomerTable({
   compact = false,
   onSelect,
+  sourceVersion,
+  onCreated,
 }: {
   compact?: boolean;
   onSelect: (id: number) => void;
+  sourceVersion?: number;
+  onCreated?: (id: number) => void;
 }) {
   const [sort, setSort] = useState("score"),
     [order, setOrder] = useState("desc"),
     [search, setSearch] = useState(""),
     [level, setLevel] = useState(""),
-    [page, setPage] = useState(1);
+    [page, setPage] = useState(1),
+    [showCreate, setShowCreate] = useState(false);
   const query = useQuery({
     queryKey: ["customers", sort, order, search, level, page, compact],
     queryFn: () =>
@@ -1190,6 +1303,7 @@ function CustomerTable({
           </p>
         </div>
         <div className="table-tools">
+          {!compact && <button className="primary add-customer-button" onClick={() => setShowCreate(true)}><Plus size={16} /> Добавить клиента</button>}
           <div className="search">
             <Search size={16} />
             <input
@@ -1280,7 +1394,7 @@ function CustomerTable({
                   <Badge level={c.risk_level} />
                 </td>
                 <td className="reason-cell">
-                  <span title={c.reason}>{c.reason}</span>
+                  <span title={formatReason(c.reason)}>{formatReason(c.reason)}</span>
                 </td>
                 <td>
                   <button
@@ -1307,6 +1421,7 @@ function CustomerTable({
           <p>Попробуйте другой запрос или уровень риска</p>
         </div>
       )}
+      {showCreate && sourceVersion && <NewCustomerDialog sourceVersion={sourceVersion} onClose={() => setShowCreate(false)} onCreated={(id) => { setShowCreate(false); onCreated?.(id); }} />}
       <div className="table-footer">
         <span>
           {query.data?.total
@@ -1339,7 +1454,7 @@ function CustomerTable({
   );
 }
 
-function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number; focusScenario: boolean; onClose: () => void; onSuccess: (message: string) => void }) {
+function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }: { id: number; currency: Currency; fx?: FxRates; focusScenario: boolean; onClose: () => void; onSuccess: (message: string) => void }) {
   const query = useQuery({
     queryKey: ["customer", id],
     queryFn: () => api("/customers/" + id),
@@ -1354,9 +1469,10 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
   const [scenarioError, setScenarioError] = useState("");
   const [actionError, setActionError] = useState("");
   const [scenarioPending, setScenarioPending] = useState(false);
+  useEffect(() => { setScenarioBalance(""); setScenario(null); }, [currency]);
   function scenarioPayload() {
     const payload: Record<string, number | boolean> = {};
-    if (scenarioBalance !== "") payload.balance_cents = euroCentsFromRubles(Number(scenarioBalance));
+    if (scenarioBalance !== "") payload.balance_cents = euroCentsFromDisplay(Number(scenarioBalance));
     if (scenarioService) {
       payload.service_id = Number(scenarioService);
       payload.auto_prolong = scenarioAuto;
@@ -1447,6 +1563,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
             <div className="drawer-title">
               <span className="big-avatar">{c.email[0].toUpperCase()}</span>
               <h2>{c.email}</h2>
+              <small className="customer-id-label">ID #{c.id}</small>
               <Badge level={c.risk_level} />
             </div>
             <div className="drawer-score">
@@ -1457,7 +1574,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
                   <small>/ 100</small>
                 </strong>
               </div>
-              <p>{c.reason}</p>
+              <p>{formatReason(c.reason)}</p>
             </div>
             <div className="drawer-finance">
               <div>
@@ -1497,10 +1614,10 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
               <h3>Что если?</h3>
               <p>Расчёт без изменения данных и настроек.</p>
               <label>
-                Основной баланс, ₽
-                <input type="number" min="0" step="0.01" value={scenarioBalance} placeholder={rublesFromEuro(c.balance / 100).toFixed(2)} onChange={(event) => setScenarioBalance(event.target.value)} />
+                Основной баланс, {currencySymbol()}
+                <input type="number" min="0" step="0.01" value={scenarioBalance} placeholder={displayFromEuro(c.balance / 100).toFixed(2)} onChange={(event) => setScenarioBalance(event.target.value)} />
               </label>
-              <small>Демоданные пересчитаны по курсу ЦБ РФ на 24.10.2026: €1 = {RUB_PER_EUR.toLocaleString("ru-RU", { minimumFractionDigits: 4 })} ₽.</small>
+              <small>{currency === "EUR" ? "Исходные суммы хранятся в евро." : `Курс ЦБ РФ на ${fx?.rate_date || "24.10.2026"}: €1 = ${(fx?.rates_rub.EUR || 90.2429).toFixed(4)} ₽${currency === "USD" ? `; $1 = ${(fx?.rates_rub.USD || 80.5381).toFixed(4)} ₽` : ""}.`}{fx?.stale ? " Курс ожидает обновления." : ""}</small>
               <label>
                 Услуга
                 <select value={scenarioService} onChange={(event) => {
@@ -1567,7 +1684,7 @@ function CustomerDrawer({ id, focusScenario, onClose, onSuccess }: { id: number;
                   <div className="feature-list">
                     {s.reasons.map((r: any, i: number) => (
                       <div key={i}>
-                        <span>{r.text}</span>
+                        <span>{formatReason(r.text)}</span>
                         {r.contribution !== undefined && (
                           <strong>+{r.contribution.toFixed(1)}</strong>
                         )}
@@ -1696,7 +1813,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       <button disabled={!action.customer} onClick={() => onSelect(action.customer_id)}>{action.customer?.email ?? `Клиент #${action.customer_id} · нет в текущих данных`}</button>
       <span>{action.customer ? <Badge level={action.customer.risk_level} /> : "Нет в текущем снимке"}</span>
     </div>
-    {action.customer && <p>{action.customer.reason} · {money(action.customer.loss_eur)} под риском</p>}
+    {action.customer && <p>{formatReason(action.customer.reason)} · {money(action.customer.loss_eur)} под риском</p>}
     <div className="action-fields">
       <label>Статус<select value={status} onChange={(event) => { setStatus(event.target.value); setDirty(true); }}><option value="open">В работе</option><option value="contacted">Связались</option><option value="resolved">Завершено</option></select></label>
       <label>Итог продления<select value={outcome} onChange={(event) => { setOutcome(event.target.value); setDirty(true); }}><option value="pending">Ожидаем</option><option value="renewed">Продлил</option><option value="not_renewed">Не продлил</option></select></label>

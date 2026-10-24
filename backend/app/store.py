@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, insert, delete, update, text, func
 from sqlalchemy.exc import IntegrityError
 from . import db
-from .schemas import Snapshot, Settings
+from .schemas import Snapshot, Settings, Account
 from .scoring import calculate, CALCULATION_SCHEMA_VERSION
 
 
@@ -88,6 +88,25 @@ class Store:
             self._calculate(conn)
         self.prune_history()
         return self.current()
+
+    def add_customer(self, email, balance_cents, expected_source_version):
+        with self.lock:
+            with self.engine.connect() as conn:
+                latest = self.latest(conn, db.snapshots)
+            if latest['id'] != expected_source_version:
+                raise Conflict('Реестр изменился. Обновите страницу и повторите добавление.')
+            source = Snapshot.model_validate(latest['payload'])
+            email = email.strip().lower()
+            if any(account.email.lower() == email for account in source.accounts):
+                raise Conflict('Клиент с таким email уже есть в реестре.')
+            customer_id = max((account.id for account in source.accounts), default=0) + 1
+            account = Account(id=customer_id, email=email, balance=balance_cents,
+                              withdrawBalance=0, totalReplenished=0,
+                              bonusBalance=0, bonusState='locked')
+            source.accounts.append(account)
+            result = self.replace_snapshot(source)
+            return {'id': customer_id, 'source_version': result['source_version'],
+                    'calculation_version': result['calculation_version']}
 
     def update_settings(self, changes, expected_version):
         with self.lock, self.engine.begin() as conn:

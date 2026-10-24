@@ -52,19 +52,55 @@ export const levels: Record<Level, string> = {
   low: "Низкий",
   unknown: "Нет оценки",
 };
-// The source snapshot stores euro cents. Keep a fixed rate so historical
-// calculations and what-if inputs use the same conversion.
-export const RUB_PER_EUR = 90.2429;
-export const rublesFromEuro = (euros: number) => Math.round(euros * RUB_PER_EUR * 100) / 100;
-export const euroCentsFromRubles = (rubles: number) => Math.round((rubles / RUB_PER_EUR) * 100);
+export type Currency = "RUB" | "USD" | "EUR";
+export type Language = "ru" | "en";
+export type FxRates = { rates_rub: { EUR: number; USD: number }; rate_date: string; stale: boolean; fetched_at: string | null; source: string };
+let selectedCurrency: Currency = "RUB";
+let selectedLanguage: Language = "ru";
+let rates: FxRates = { rates_rub: { EUR: 90.2429, USD: 80.5381 }, rate_date: "24.10.2026", stale: true, fetched_at: null, source: "https://www.cbr.ru/scripts/XML_daily.asp" };
+export const setDisplayPreferences = (currency: Currency, language: Language, nextRates?: FxRates) => {
+  selectedCurrency = currency;
+  selectedLanguage = language;
+  if (nextRates) rates = nextRates;
+};
+export const currencySymbol = () => ({ RUB: "₽", USD: "$", EUR: "€" })[selectedCurrency];
+export const displayFromEuro = (euros: number) => selectedCurrency === "EUR" ? euros :
+  selectedCurrency === "RUB" ? euros * rates.rates_rub.EUR : euros * rates.rates_rub.EUR / rates.rates_rub.USD;
+export const euroCentsFromDisplay = (value: number) => Math.round(
+  (selectedCurrency === "EUR" ? value : selectedCurrency === "RUB" ? value / rates.rates_rub.EUR : value * rates.rates_rub.USD / rates.rates_rub.EUR) * 100,
+);
 export const money = (euros: number) =>
-  new Intl.NumberFormat("ru-RU", {
+  new Intl.NumberFormat(selectedLanguage === "ru" ? "ru-RU" : "en-US", {
     style: "currency",
-    currency: "RUB",
+    currency: selectedCurrency,
     maximumFractionDigits: 2,
-  }).format(rublesFromEuro(euros));
+  }).format(displayFromEuro(euros));
+const reasonTexts: Record<string, string> = {
+  "Автопродление отключено для предстоящего платежа": "Auto-renewal is off for the upcoming payment",
+  "Автопродление включено": "Auto-renewal is on",
+  "В горизонте нет платежей для продления": "No renewal payments in the horizon",
+  "Услуга ожидает оплаты": "Service awaits payment",
+  "Ожидания оплаты нет": "No pending payment",
+  "Ближайшие платежи покрыты, выраженных факторов риска нет": "Upcoming payments are covered; no major risk factors",
+  "Нет услуг, доступных для продления": "No services eligible for renewal",
+  "Оценка неполная: несогласованные сроки услуг": "Incomplete assessment: inconsistent service dates",
+  "Услуга удалена": "Service deleted",
+  "Продление заблокировано": "Renewal blocked",
+  "Дата создания услуги позже времени расчёта": "Service created after analysis time",
+  "Ожидание оплаты началось до срока окончания услуги": "Payment wait started before service expiry",
+  "Срок услуги истёк, но источник сохраняет действующий статус": "Service expired but source still marks it active",
+};
+export const formatReason = (reason: string) => reason.split("; ").map((part) => {
+  const funding = /^Не покрыто балансом: ([\d.]+) ₽$/.exec(part);
+  if (funding) return `${selectedLanguage === "ru" ? "Не покрыто балансом" : "Unfunded"}: ${money(Number(funding[1]) / 90.2429)}`;
+  if (selectedLanguage === "ru") return part;
+  if (reasonTexts[part]) return reasonTexts[part];
+  return part.replace(/^До срока оплаты: ([\d.]+) дн\.$/, "Until payment: $1 days")
+    .replace(/^Просрочка оплаты: ([\d.]+) дн\.$/, "Payment overdue: $1 days")
+    .replace(/^Ожидание оплаты длится ([\d.]+) дн\. при допустимых 5 днях$/, "Payment has been pending for $1 days (limit: 5 days)");
+}).join("; ");
 export const date = (s: string) =>
-  new Date(s).toLocaleString("ru-RU", {
+  new Date(s).toLocaleString(selectedLanguage === "ru" ? "ru-RU" : "en-US", {
     timeZone: "Europe/Moscow",
     day: "2-digit",
     month: "short",

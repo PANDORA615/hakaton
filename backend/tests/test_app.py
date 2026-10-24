@@ -43,6 +43,43 @@ def sign_in(client):
     return {'X-CSRF-Token': response.json()['csrf_token']}
 
 
+def test_add_customer_gets_unique_id_is_searchable_and_persists(client, app):
+    headers = sign_in(client)
+    before = client.get('/api/v1/analytics/summary').json()
+    body = {'email': '  New.Customer@Example.Test ', 'balance_cents': 12345,
+            'expected_source_version': before['source_version']}
+    assert client.post('/api/v1/customers', json=body).status_code == 403
+    created = client.post('/api/v1/customers', json=body, headers=headers)
+    assert created.status_code == 201, created.text
+    customer_id = created.json()['id']
+    assert customer_id > 0
+    found = client.get(f'/api/v1/customers?search={customer_id}').json()['items']
+    assert any(item['id'] == customer_id for item in found)
+    assert client.get(f'/api/v1/customers/{customer_id}').json()['email'] == 'new.customer@example.test'
+    source = client.get('/api/v1/source/snapshot').json()
+    assert next(item for item in source['accounts'] if item['id'] == customer_id)['balance'] == 12345
+    assert client.post('/api/v1/customers', json=body, headers=headers).status_code == 409
+    body['expected_source_version'] = created.json()['source_version']
+    assert client.post('/api/v1/customers', json=body, headers=headers).status_code == 409
+    assert client.get('/api/v1/analytics/summary').json()['customer_count'] == before['customer_count'] + 1
+
+
+def test_fx_rates_use_official_values_and_cached_fallback(monkeypatch):
+    from app.fx import FxCache
+    from io import BytesIO
+    payload = b'<ValCurs Date="24.10.2026"><Valute><CharCode>USD</CharCode><Nominal>1</Nominal><Value>80,5381</Value></Valute><Valute><CharCode>EUR</CharCode><Nominal>1</Nominal><Value>90,2429</Value></Valute></ValCurs>'
+    class Response(BytesIO):
+        pass
+    monkeypatch.setattr('app.fx.urllib.request.urlopen', lambda request, timeout: Response(payload))
+    cache = FxCache()
+    result = cache.get()
+    assert result['rates_rub'] == {'USD': 80.5381, 'EUR': 90.2429}
+    assert result['rate_date'] == '24.10.2026' and not result['stale']
+    cache.retry_at = 0
+    monkeypatch.setattr('app.fx.urllib.request.urlopen', lambda request, timeout: (_ for _ in ()).throw(OSError('offline')))
+    assert cache.get()['stale'] and cache.get()['rates_rub'] == result['rates_rub']
+
+
 def test_fixed_and_live_time_contract(tmp_path, monkeypatch):
     url = f'sqlite:///{tmp_path}/clock.db'
     monkeypatch.delenv('ANALYSIS_AS_OF', raising=False)

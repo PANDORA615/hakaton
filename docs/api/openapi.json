@@ -3,7 +3,7 @@
   "info": {
     "title": "Aéza Retention API",
     "description": "Explainable retention index. Cookie session required; mutating authenticated requests require X-CSRF-Token. All source money fields are integer EUR cents. API fields ending _eur are EUR. Scores are indices, not calibrated probabilities.",
-    "version": "0.4.0"
+    "version": "0.8.0-beta"
   },
   "paths": {
     "/api/v1/auth/login": {
@@ -368,7 +368,84 @@
         ]
       }
     },
+    "/api/v1/fx/rates": {
+      "get": {
+        "tags": [
+          "currency"
+        ],
+        "summary": "Fx Rates",
+        "operationId": "fx_rates_api_v1_fx_rates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/customers": {
+      "post": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Create Customer",
+        "operationId": "create_customer_api_v1_customers_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "csrf_token returned by login/me"
+          }
+        ]
+      },
       "get": {
         "tags": [
           "customers"
@@ -1152,6 +1229,35 @@
           "status"
         ],
         "title": "ActionRequest"
+      },
+      "CustomerCreate": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "balance_cents": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "minimum": 0.0,
+            "title": "Balance Cents",
+            "default": 0
+          },
+          "expected_source_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Source Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "expected_source_version"
+        ],
+        "title": "CustomerCreate"
       },
       "HTTPValidationError": {
         "properties": {

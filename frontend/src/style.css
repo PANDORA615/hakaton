@@ -1669,8 +1669,8 @@ tbody tr:hover {
   margin: 17px 0 12px;
 }
 .drawer-score {
-  background: #fafafa;
-  border: 1px solid #eeeff1;
+  background: var(--surface-container);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
 }
@@ -1681,7 +1681,7 @@ tbody tr:hover {
 }
 .drawer-score > div > span {
   font-size: 12px;
-  color: #8c939c;
+  color: var(--muted);
 }
 .drawer-score strong {
   font-size: 31px;
@@ -1691,14 +1691,14 @@ tbody tr:hover {
 .drawer-score small {
   font-size: 10px;
   font-weight: 500;
-  color: #b1b7be;
+  color: var(--muted);
   letter-spacing: 0;
   margin-left: 7px;
 }
 .drawer-score p {
   font-size: 11px;
   line-height: 1.9;
-  color: #959ba5;
+  color: var(--on-surface-variant);
   margin-top: 7px;
 }
 .drawer-finance {
@@ -1726,11 +1726,31 @@ tbody tr:hover {
   gap: 10px;
   font-size: 10px;
   line-height: 1.9;
-  color: #b6a087;
-  background: #fffbf6;
+  color: var(--on-surface-variant);
+  background: var(--primary-container);
   padding: 13px;
   border-radius: 8px;
 }
+.drawer-score strong { color: var(--ink); }
+.customer-id-label { display: block; margin: -4px 0 12px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.preferences-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.preference-card { padding: 22px; }
+.preference-card .panel-heading h2 { display: flex; align-items: center; gap: 10px; }
+.preference-wide { grid-column: 1 / -1; }
+.choice-row { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 14px; }
+.choice { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 9px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-container); color: var(--ink); font-weight: 700; }
+.choice:hover { background: var(--surface-container-high); }
+.choice.active { border-color: var(--orange); background: var(--primary-container); color: var(--on-primary-container); }
+.fx-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin-top: 20px; color: var(--muted); font-size: 12px; }
+.fx-status .secondary { margin-left: auto; }
+.customer-create-overlay { z-index: 110; display: grid; place-items: center; padding: 16px; }
+.customer-create-dialog { width: min(100%, 480px); max-height: min(90dvh, 700px); overflow-y: auto; padding: 24px; background: var(--surface); color: var(--ink); }
+.customer-create-form { display: grid; gap: 15px; }
+.customer-create-form label { display: grid; gap: 7px; color: var(--on-surface-variant); font-size: 12px; font-weight: 700; }
+.customer-create-form input { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-container); color: var(--ink); }
+.customer-create-form small { color: var(--muted); line-height: 1.5; }
+.add-customer-button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; min-height: 42px; }
+@media (max-width: 720px) { .preferences-grid { grid-template-columns: 1fr; } .preference-wide { grid-column: auto; } .choice-row > button { flex: 1 1 120px; } .fx-status .secondary { margin-left: 0; width: 100%; justify-content: center; } .add-customer-button { width: 100%; justify-content: center; } }
 .drawer-explainer svg {
   margin-top: 3px;
   flex-shrink: 0;
@@ -1950,7 +1970,10 @@ tbody tr:hover {
   position: absolute;
   top: 22px;
   right: 24px;
+  display: flex;
+  gap: 9px;
 }
+.login-language-button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-container); color: var(--ink); font-weight: 800; font-size: 12px; }
 .login-form {
   max-width: 340px;
   width: 100%;
@@ -3643,7 +3666,7 @@ body,
   .service-heading > div { min-width: 0; overflow-wrap: anywhere; }
   .login-form-area { align-items: flex-start; padding: 88px 20px max(30px, env(safe-area-inset-bottom)); }
   .login-form { max-width: 400px; margin-bottom: 0; }
-  .login-form input, .oidc-demo-form input, .scenario-panel input, .scenario-panel select,
+  .login-form input, .oidc-demo-form input, .scenario-panel input, .scenario-panel select, .customer-create-form input,
   .account-form input, .action-fields select, .action-fields textarea, .parameter-grid input,
   .weight-control input[type="number"] { font-size: 16px; }
   .account-panel { min-width: 0; }

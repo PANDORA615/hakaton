@@ -1,0 +1,187 @@
+/** Interface copy for the hackathon prototype. Customer data is never translated. */
+const pairs: Record<string, string> = {
+  'АНАЛИТИКА': 'ANALYTICS', 'АНАЛИТИКА УДЕРЖАНИЯ': 'RETENTION ANALYTICS',
+  'Аналитика': 'Analytics', 'Обзор рисков': 'Risk overview', 'Клиенты': 'Customers',
+  'Модель риска': 'Risk model', 'Источники данных': 'Data sources', 'Работа с клиентами': 'Customer work',
+  'Результаты': 'Outcomes', 'Аккаунт': 'Account', 'Настройки аккаунта': 'Account settings',
+  'Настройки сайта': 'Site settings', 'Выйти': 'Sign out', 'Меню аккаунта': 'Account menu',
+  'Вовремя заметить риск. Сохранить клиента.': 'Spot risk in time. Keep the customer.',
+  'Приоритеты для вашей следующей коммуникации.': 'Priorities for your next outreach.',
+  'Прозрачные правила. Управляемые коэффициенты.': 'Transparent rules. Adjustable weights.',
+  'Исходные данные и качество прогноза.': 'Source data and forecast quality.',
+  'Контакты и результаты работы с клиентами.': 'Outreach and customer outcomes.',
+  'Фактически отмеченные продления после контакта.': 'Renewals recorded after outreach.',
+  'Профиль, безопасность и способы входа.': 'Profile, security and sign-in methods.',
+  'Тема, язык и валюта отображения.': 'Theme, language and display currency.',
+  'Оформление': 'Appearance', 'Подберите вид сайта для своего устройства.': 'Choose the look for this device.',
+  'Язык': 'Language', 'Язык интерфейса': 'Interface language',
+  'Язык интерфейса сохраняется на этом устройстве.': 'Language is saved on this device.',
+  'Русский': 'Russian', 'Системная': 'System', 'Светлая': 'Light', 'Тёмная': 'Dark',
+  'Тема сайта': 'Site theme', 'Светлая тема': 'Light theme', 'Тёмная тема': 'Dark theme',
+  'Как в системе': 'Follow system', 'как в системе': 'follow system', 'светлая': 'light', 'тёмная': 'dark',
+  'Валюта отображения': 'Display currency', '₽ Рубли': '₽ Rubles', '$ Доллары': '$ US dollars', '€ Евро': '€ Euros',
+  'Валюта:': 'Currency:', 'курс ЦБ РФ на': 'CBR rate dated', 'ЦБ РФ · дата курса:': 'CBR · rate date:',
+  'Суммы в рублях': 'Amounts in rubles', 'Курс ЦБ РФ на': 'CBR rate dated',
+  'Расчёты и исходные данные остаются в евро. Меняются только отображаемые суммы и ввод сценария.': 'Calculations and source data stay in euros. Only displayed amounts and scenario input change.',
+  'Проверить курс': 'Check rates', 'резервный курс, ожидается обновление': 'cached rate, awaiting update',
+  'ожидается обновление курса': 'awaiting rate update', 'исходные данные в евро': 'source data in euros',
+  'Добавить клиента': 'Add customer', 'Добавить в реестр': 'Add to registry', 'Новый клиент': 'New customer',
+  'Основной баланс,': 'Main balance,',
+  'ID присвоится автоматически после сохранения.': 'An ID will be assigned automatically when saved.',
+  'Email клиента': 'Customer email', 'Проверьте сумму баланса': 'Check the balance amount',
+  'Услуги можно загрузить через снимок данных. Импорт снимка полностью заменяет текущий реестр.': 'Services can be uploaded through a data snapshot. Importing a snapshot replaces the current registry.',
+  'Рейтинг клиентов': 'Customer ranking', 'Кому уделить внимание': 'Who needs attention',
+  'Клиенты по убыванию индекса риска': 'Customers ordered by risk score',
+  'Сортируйте, изучайте причины и выбирайте приоритеты': 'Sort, review reasons and set priorities',
+  'Поиск клиента': 'Search customers', 'Email или ID клиента': 'Customer email or ID',
+  'Клиент': 'Customer', 'Баланс': 'Balance', 'Пополнено всего': 'Total topped up',
+  'Уровень риска': 'Risk level', 'Основная причина': 'Main reason',
+  'Таблица прокручивается в стороны →': 'Scroll the table sideways →',
+  'Таблица клиентов, прокручивается горизонтально': 'Customer table, scroll horizontally',
+  'Клиенты не найдены': 'No customers found', 'Попробуйте другой запрос или уровень риска': 'Try another search or risk level',
+  'Нет результатов': 'No results', 'Предыдущая страница': 'Previous page', 'Следующая страница': 'Next page',
+  'Высокий': 'High', 'Средний': 'Medium', 'Низкий': 'Low', 'Нет оценки': 'Unrated',
+  'Все уровни': 'All levels', 'Высокий риск': 'High risk',
+  'КАРТОЧКА КЛИЕНТА': 'CUSTOMER PROFILE', 'Карточка клиента': 'Customer profile',
+  'КАРТОЧКА КЛИЕНТА · #': 'CUSTOMER PROFILE · #',
+  'Закрыть карточку': 'Close customer profile', 'Закрыть': 'Close', 'Закрыть уведомление': 'Dismiss notification',
+  'Индекс риска': 'Risk score', 'Основной баланс': 'Main balance', 'Доступно для услуг': 'Available for services',
+  'Платежи под риском': 'Payments at risk', 'Бонусы': 'Bonuses', 'доступны': 'available', 'заблокированы': 'locked',
+  'Добавить в работу': 'Add to work queue', 'Что если?': 'What if?',
+  'Сумма под риском учитывает цену услуг, индекс и покрытие общим балансом. Это сценарная оценка, а не гарантированная потеря.': 'The amount at risk accounts for service price, score and coverage by the shared balance. It is a scenario estimate, not a guaranteed loss.',
+  'Исходные суммы хранятся в евро.': 'Source amounts are stored in euros.', 'Курс ожидает обновления.': 'The rate is awaiting refresh.',
+  'Индекс:': 'Score:', 'Под риском:': 'At risk:', 'К оплате:': 'Due:', 'Не покрыто:': 'Unfunded:',
+  'Расчёт без изменения данных и настроек.': 'Calculate without changing source data or settings.',
+  'Услуга': 'Service', 'Не менять автопродление': 'Keep auto-renewal unchanged',
+  'Включить автопродление': 'Enable auto-renewal', 'Рассчитать сценарий': 'Calculate scenario',
+  'Данные или параметры сценария изменились. Пересчитайте его.': 'Data or scenario inputs changed. Recalculate.',
+  'Услуги клиента': 'Customer services', 'час': 'hour', 'неделя': 'week', 'месяц': 'month',
+  'квартал': 'quarter', 'полгода': 'six months', 'год': 'year',
+  'Подключение…': 'Connecting…', 'Обновляется автоматически': 'Updates automatically',
+  'Восстанавливаем связь': 'Reconnecting', 'Фиксированное время': 'Fixed time', 'Текущее время': 'Live time',
+  'Понятная модель': 'Explainable model', 'Настроить модель': 'Adjust model',
+  'К графику': 'View chart', 'Горизонт анализа': 'Analysis horizon', 'Горизонт, дней': 'Horizon, days',
+  'Платежи и сценарная сумма под риском': 'Payments and scenario amount at risk',
+  'Прогноз по дням': 'Daily forecast', 'Распределение риска': 'Risk distribution',
+  'Клиентов в анализе': 'Customers analyzed', 'Нуждаются в вашем внимании': 'Need your attention',
+  'Полная оценка': 'Complete assessment', 'Частичная оценка': 'Partial assessment',
+  'Качество исходных данных': 'Source data quality', 'Часть данных требует внимания': 'Some data needs attention',
+  'Текущая оценка клиентской базы': 'Current customer assessment',
+  'Коэффициенты риска': 'Risk weights', 'Параметры расчёта': 'Calculation settings',
+  'Настройки сохраняются в базе': 'Settings are saved in the database',
+  'Веса определяют вклад каждого признака в итоговую оценку': 'Weights control how much each feature contributes to the final score',
+  'Нулевой вес отключает признак': 'A zero weight disables the feature',
+  'Множитель при покрытии': 'Multiplier when funded', 'Окно срочности, дней': 'Urgency window, days',
+  'Средний риск от': 'Medium risk from', 'Высокий риск от': 'High risk from',
+  'Сохранить': 'Save', 'Сохраняем…': 'Saving…', 'Заметка': 'Note', 'Статус': 'Status',
+  'Фильтр контактов': 'Outreach filter', 'Все': 'All', 'В работе': 'Open', 'Связались': 'Contacted',
+  'Завершено': 'Resolved', 'Ожидаем': 'Pending', 'Продлил': 'Renewed', 'Не продлил': 'Did not renew',
+  'Итог продления': 'Renewal outcome', 'Очередь пуста': 'Work queue is empty',
+  'Нет записей с таким статусом': 'No records with this status',
+  'Откройте клиента и нажмите «Добавить в работу».': 'Open a customer and choose “Add to work queue”.',
+  'История статусов услуг': 'Service status history', 'История появится после загрузки данных.': 'History appears after data is loaded.',
+  'Зафиксированные результаты': 'Recorded outcomes', 'Продлили после контакта': 'Renewed after outreach',
+  'Не продлили': 'Did not renew', 'Ожидают результата': 'Awaiting outcome', 'Доля продлений': 'Renewal share',
+  'Отмеченный факт продления': 'Recorded renewal', 'Отмеченный факт отказа': 'Recorded non-renewal',
+  'Результаты вводятся вручную в разделе «Работа с клиентами».': 'Outcomes are entered manually under Customer work.',
+  'Результатов пока нет': 'No outcomes yet', 'После общения с клиентом отметьте, продлил ли он услугу.': 'Record whether the customer renewed after outreach.',
+  'Эти числа показывают отмеченные итоги. Они не доказывают, что продление произошло именно благодаря контакту.': 'These figures show recorded outcomes. They do not prove that outreach caused renewal.',
+  'Очередь контактов': 'Outreach queue', 'Добавляйте клиентов из карточки, фиксируйте результат общения.': 'Add customers from their profiles and record the outcome.',
+  'Записи без отмеченного итога': 'Records without an outcome',
+  'Источник данных': 'Data source', 'Импорт снимка данных': 'Import data snapshot',
+  'Полная замена аккаунтов, услуг и транзакций': 'Replace all accounts, services and transactions',
+  'Выберите JSON-файл': 'Choose a JSON file', 'Выбрать snapshot JSON': 'Choose snapshot JSON',
+  'Экспорт snapshot': 'Export snapshot', 'Подтвердить замену': 'Confirm replacement',
+  'Заменить текущий снимок?': 'Replace the current snapshot?',
+  'Исходный набор организаторов': 'Original organizer dataset',
+  'Оригинальный набор и отдельные сценарии': 'Original dataset and separate scenarios',
+  'ПРОФИЛЬ': 'PROFILE', 'Данные аккаунта': 'Account details', 'Безопасность и вход': 'Security and sign-in',
+  'Активность аккаунта': 'Account activity', 'Последний вход': 'Last sign-in',
+  'Контактный email': 'Contact email', 'Текущий пароль для смены логина': 'Current password to change username',
+  'Имя показывается в панели. Email сохраняется в профиле как контактная информация.': 'Your name appears in the dashboard. Email is saved as profile contact information.',
+  'Смена пароля завершит все другие сеансы.': 'Changing your password ends all other sessions.',
+  'Информация о ваших сеансах.': 'Information about your sessions.',
+  'Включено': 'Enabled', 'До перезагрузки страницы': 'Until page reload', 'Не менялся': 'Not changed',
+  'Подключён': 'Connected', 'Ожидает настройки провайдера': 'Awaiting provider setup',
+  'Активных сеансов': 'Active sessions', 'Текущий сеанс до': 'Current session expires',
+  'Логин': 'Username', 'Пароль': 'Password', 'Текущий пароль': 'Current password',
+  'Новый пароль': 'New password', 'Повторите новый пароль': 'Repeat new password',
+  'Изменить пароль': 'Change password', 'Отображаемое имя': 'Display name',
+  'Сохранить профиль': 'Save profile', 'Завершить другие сеансы': 'End other sessions',
+  'Запомнить меня': 'Remember me', 'Запоминание входа': 'Remember sign-in',
+  'Войти в панель': 'Sign in', 'Войти через единый вход': 'Sign in with SSO',
+  'Посмотреть вход через OIDC': 'Preview OIDC sign-in',
+  'Войдите в панель аналитики': 'Sign in to analytics', 'Введите пароль администратора': 'Enter administrator password',
+  'Рады видеть вас': 'Welcome back', 'Единый вход': 'Single sign-on',
+  'Замечайте риск.': 'Spot risk.', 'Сохраняйте': 'Preserve', 'отношения.': 'relationships.',
+  'Клиенты, которым нужно внимание.': 'Customers who need attention.',
+  'Причины, которые можно объяснить.': 'Reasons you can explain.',
+  'Решения, основанные на данных.': 'Decisions based on data.',
+  'Анализатор риска непродления услуг': 'Service renewal risk analyzer',
+  'Демонстрация единого входа': 'Single sign-on demo', 'Подтвердите личность': 'Verify your identity',
+  'Подтвердить вход': 'Confirm sign-in', 'Переход к провайдеру': 'Continue to identity provider',
+  'Данные доступны только после входа': 'Data is available after sign-in',
+  'Открыть навигацию': 'Open navigation', 'Закрыть навигацию': 'Close navigation',
+  'Модель без чёрного ящика': 'Transparent model', 'Каждая оценка объяснима.': 'Every score can be explained.',
+  'Каждый фактор под контролем.': 'Every factor is under control.', 'аккаунтов': 'accounts', 'услуг': 'services', 'транзакций': 'transactions',
+  'автоматически': 'automatically', 'под риском': 'at risk', 'МСК': 'MSK',
+  'Не покрыто балансом': 'Unfunded', 'Автопродление отключено': 'Auto-renewal off',
+  'Недостаток средств': 'Funding gap', 'Ожидание оплаты': 'Payment pending', 'Близость срока оплаты': 'Payment due soon',
+  'Ближайший платёж требует ручного действия': 'Next payment needs manual action',
+  'Доля платежей, не покрытых общим балансом': 'Share of payments not covered by total balance',
+  'Услуга находится в пятидневном окне prolong_wait': 'Service is within the five-day payment window',
+  'Срочность платежа в выбранном окне': 'Payment urgency in the selected window',
+};
+
+const reverse = new Map(Object.entries(pairs).map(([ru, en]) => [en, ru]));
+const dynamic = [
+  [/^Клиент #(\d+) · нет в текущих данных$/, 'Customer #$1 · not in current data'],
+  [/^Показано (.+) из (\d+)$/, 'Showing $1 of $2'],
+  [/^(\d+) клиентов с высоким риском$/, '$1 high-risk customers'],
+  [/^(\d+) клиентов$/, '$1 customers'],
+  [/^(\d+) активных$/, '$1 active'],
+  [/^(\d+) услуги$/, '$1 services'],
+  [/^Расчёт #(\d+) · данные v(\d+)$/, 'Calculation #$1 · source v$2'],
+  [/^(.*) · ([\d.,\s$€₽]+) под риском$/, '$1 · $2 at risk'],
+] as const;
+
+function translated(raw: string, language: 'ru' | 'en') {
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  let value = language === 'en' ? pairs[trimmed] : reverse.get(trimmed);
+  if (language === 'en' && !value) {
+    for (const [pattern, replacement] of dynamic) {
+      if (pattern.test(trimmed)) { value = trimmed.replace(pattern, replacement); break; }
+    }
+  }
+  if (!value || value === trimmed) return raw;
+  return raw.replace(trimmed, value);
+}
+
+export function installTranslations(language: 'ru' | 'en') {
+  let scheduled = false;
+  const scan = () => {
+    scheduled = false;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement?.closest('script,style,textarea,input')) continue;
+      const updated = translated(node.textContent || '', language);
+      if (updated !== node.textContent) node.textContent = updated;
+    }
+    document.querySelectorAll<HTMLElement>('[placeholder],[aria-label],[title]').forEach((element) => {
+      for (const key of ['placeholder', 'aria-label', 'title']) {
+        const value = element.getAttribute(key);
+        if (value) {
+          const updated = translated(value, language);
+          if (updated !== value) element.setAttribute(key, updated);
+        }
+      }
+    });
+  };
+  const schedule = () => { if (!scheduled) { scheduled = true; requestAnimationFrame(scan); } };
+  const observer = new MutationObserver(schedule);
+  observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'aria-label', 'title'] });
+  schedule();
+  return () => observer.disconnect();
+}

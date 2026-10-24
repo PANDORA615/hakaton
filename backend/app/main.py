@@ -30,6 +30,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import db
 from .schemas import Snapshot
 from .store import Store, Conflict, ActionConflict
+from .fx import fx_cache
 
 COOKIE = 'aeza_session'
 logger = logging.getLogger(__name__)
@@ -77,6 +78,21 @@ class SettingsPatch(BaseModel):
     high_threshold: float | None = None
     coverage_threshold: float | None = None
     funded_multiplier: float | None = None
+
+
+class CustomerCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    email: str = Field(min_length=3, max_length=320)
+    balance_cents: int = Field(default=0, ge=0, le=9223372036854775807, strict=True)
+    expected_source_version: int = Field(ge=1, strict=True)
+
+    @field_validator('email')
+    @classmethod
+    def valid_email(cls, value):
+        value = value.strip().lower()
+        if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', value):
+            raise ValueError('Укажите корректный email')
+        return value
 
 
 class ScenarioRequest(BaseModel):
@@ -170,12 +186,22 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                         except Exception:
                             logger.exception('Scheduled calculation failed; last successful version retained')
         task = asyncio.create_task(tick())
+        async def refresh_rates():
+            while not stop.is_set():
+                await asyncio.to_thread(fx_cache.get)
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=60 * 60)
+                except asyncio.TimeoutError:
+                    pass
+        fx_task = asyncio.create_task(refresh_rates()) if not testing else None
         yield
         stop.set()
         await task
+        if fx_task:
+            await fx_task
         engine.dispose()
 
-    app = FastAPI(title='Aéza Retention API', version='0.4.0', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title='Aéza Retention API', version='0.8.0-beta', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
     if oidc_enabled:
         app.add_middleware(SessionMiddleware, secret_key=oidc_config['OIDC_SESSION_SECRET'],
@@ -407,6 +433,17 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             conn.execute(delete(db.sessions).where(db.sessions.c.token_hash == user['token_hash']))
         response.delete_cookie(COOKIE, path='/')
         return {'ok': True}
+
+    @app.get('/api/v1/fx/rates', dependencies=[Depends(authorized)], tags=['currency'])
+    def fx_rates():
+        return fx_cache.get()
+
+    @app.post('/api/v1/customers', status_code=201, dependencies=[Depends(authorized)], tags=['customers'])
+    def create_customer(body: CustomerCreate):
+        try:
+            return store.add_customer(body.email, body.balance_cents, body.expected_source_version)
+        except Conflict as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.get('/api/v1/customers', dependencies=[Depends(authorized)], tags=['customers'])
     def customers(sort_by: str = Query('score', pattern='^(id|email|balance|totalReplenished|score)$'),
