@@ -1285,12 +1285,24 @@ function NewCustomerDialog({ sourceVersion, onClose, onCreated }: { sourceVersio
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   useEffect(() => {
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     document.addEventListener('keydown', close);
-    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', close); };
+    return () => document.removeEventListener('keydown', close);
   }, [onClose]);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const scrollWithWheel = (event: WheelEvent) => {
+      if (!event.deltaY || dialog.scrollHeight <= dialog.clientHeight) return;
+      const atTop = dialog.scrollTop <= 0;
+      const atBottom = dialog.scrollTop + dialog.clientHeight >= dialog.scrollHeight - 1;
+      if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) return;
+      event.preventDefault();
+      dialog.scrollTop += event.deltaY;
+    };
+    dialog.addEventListener('wheel', scrollWithWheel, { passive: false });
+    return () => dialog.removeEventListener('wheel', scrollWithWheel);
+  }, []);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setPending(true); setError('');
@@ -1301,8 +1313,8 @@ function NewCustomerDialog({ sourceVersion, onClose, onCreated }: { sourceVersio
       onCreated(result.id);
     } catch (cause) { setError((cause as Error).message); } finally { setPending(false); }
   }
-  return <div className="drawer-overlay customer-create-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onWheel={(event) => { if (event.target === event.currentTarget) dialogRef.current?.scrollBy({ top: event.deltaY, behavior: 'auto' }); }}>
-    <section ref={dialogRef} className="panel customer-create-dialog" role="dialog" aria-modal="true" aria-label="Добавить клиента">
+  return <div className="drawer-overlay customer-create-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section ref={dialogRef} className="panel customer-create-dialog" role="dialog" aria-modal="true" aria-label="Добавить клиента" tabIndex={-1}>
       <div className="panel-heading"><div><h2>Новый клиент</h2><p>ID присвоится автоматически после сохранения.</p></div><button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={19} /></button></div>
       <form onSubmit={submit} className="customer-create-form">
         <label>Email клиента<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={320} autoFocus placeholder="client@example.com" /></label>
@@ -1600,6 +1612,19 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
       prolong_wait: "Ожидает оплаты",
     };
   const scenarioStale = scenario && c && (scenario.customer_id !== id || scenario.calculation_version !== c.calculation_version || scenario.source_version !== c.source_version || scenario.settings_version !== c.settings_version || scenario.inputs !== JSON.stringify(scenarioPayload()));
+  const scenarioExamples = c?.services?.filter((service: any) => service.status !== 'deleted').slice(0, 2) ?? [];
+  function applyScenarioExample(service: any, index: number) {
+    setScenarioService(String(service.id));
+    setScenarioAuto(!service.autoProlong);
+    if (index === 0) {
+      const suggestedBalance = Math.max(c.balance, service.price ?? 0) / 100;
+      setScenarioBalance(displayFromEuro(suggestedBalance).toFixed(2));
+    } else {
+      setScenarioBalance("");
+    }
+    setScenario(null);
+    setScenarioError("");
+  }
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <aside
@@ -1679,7 +1704,16 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
             {actionError && <ErrorBox message={actionError} />}
             <section className="scenario-panel" ref={scenarioRef}>
               <h3>Что если?</h3>
-              <p>Расчёт без изменения данных и настроек.</p>
+              <p>Измените баланс или автопродление услуги и сравните результат. Исходные данные не сохраняются.</p>
+              {scenarioExamples.length > 0 && <div className="scenario-examples" aria-label="Примеры сценариев">
+                <span>Быстрые примеры</span>
+                <div>
+                  {scenarioExamples.map((service: any, index: number) => <button type="button" className="scenario-example" key={service.id} onClick={() => applyScenarioExample(service, index)}>
+                    <strong>{index + 1}. {service.name}</strong>
+                    <small>{index === 0 ? `Баланс для оплаты + автопродление ${service.autoProlong ? 'выключить' : 'включить'}` : `Автопродление ${service.autoProlong ? 'выключить' : 'включить'}`}</small>
+                  </button>)}
+                </div>
+              </div>}
               <label>
                 Основной баланс, {currencySymbol()}
                 <input type="number" min="0" step="0.01" value={scenarioBalance} placeholder={displayFromEuro(c.balance / 100).toFixed(2)} onChange={(event) => setScenarioBalance(event.target.value)} />
@@ -1697,7 +1731,7 @@ function CustomerDrawer({ id, currency, fx, focusScenario, onClose, onSuccess }:
                 </select>
               </label>
               {scenarioService && <label className="scenario-check"><input type="checkbox" checked={scenarioAuto} onChange={(event) => setScenarioAuto(event.target.checked)} /> Включить автопродление</label>}
-              <button className="primary" disabled={scenarioPending || (!scenarioService && scenarioBalance === "")} onClick={runScenario}>Рассчитать сценарий</button>
+              <button className="primary scenario-submit" disabled={scenarioPending || (!scenarioService && scenarioBalance === "")} onClick={runScenario}>{scenarioPending ? 'Рассчитываем…' : 'Рассчитать сценарий'}</button>
               {scenarioError && <ErrorBox message={scenarioError} />}
               {scenarioStale && <p className="scenario-stale">Данные или параметры сценария изменились. Пересчитайте его.</p>}
               {scenario && !scenarioStale && <div className="scenario-result">
