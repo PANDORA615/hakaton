@@ -3777,7 +3777,8 @@ body,
 .guide-spotlight-copy > span { color: #26bd1c; font-size: 9px; font-weight: 900; letter-spacing: 2.1px; }
 .guide-spotlight-copy > strong { font-size: 28px; line-height: 1.25; letter-spacing: -1.1px; }
 .guide-spotlight-copy > small { color: var(--on-surface-variant); font-size: 11px; line-height: 1.45; }
-.guide-pointer { position: absolute; left: calc(100% + 14px); top: 2px; width: clamp(125px, 14vw, 190px); overflow: visible; color: #42e52f; filter: drop-shadow(0 3px 5px #0008); }
+.guide-pointer { position: absolute; left: calc(100% + 18px); top: 50%; display: grid; place-items: center; width: clamp(72px, 9vw, 118px); height: 54px; color: #42e52f; transform: translateY(-50%); filter: drop-shadow(0 0 5px #42e52f80) drop-shadow(0 3px 4px #0008); }
+.guide-pointer svg { width: 100%; height: 100%; stroke-width: 2.4; }
 @keyframes guide-spotlight-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 .guide-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .guide-header span { display: inline-flex; align-items: center; gap: 8px; color: var(--orange); font-size: 12px; font-weight: 800; }
@@ -3807,7 +3808,7 @@ body,
   .guide-dialog { width: 100%; max-height: 86dvh; padding: 20px 18px max(22px, env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; }
   .guide-spotlight { left: 12px !important; width: calc(100vw - 24px) !important; padding: 10px 12px; }
   .guide-spotlight-copy > strong { font-size: clamp(22px, 7vw, 27px); }
-  .guide-pointer { left: auto; right: 8px; top: calc(100% + 5px); width: 105px; transform: rotate(105deg); transform-origin: top right; }
+  .guide-pointer { left: auto; right: 18px; top: calc(100% + 7px); width: 62px; height: 62px; transform: rotate(90deg); transform-origin: center; }
   .help-card { padding: 18px; }
   .assistant-preference-controls .secondary { width: 100%; justify-content: center; }
 }

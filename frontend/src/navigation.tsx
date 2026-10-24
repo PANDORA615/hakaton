@@ -157,10 +157,7 @@ export function GuideDialog({ language, step, onPrevious, onNext, onClose }: { l
         <strong>{spotlight.title}</strong>
         <small>{spotlight.subtitle}</small>
       </div>
-      <svg className="guide-pointer" viewBox="0 0 190 90" role="presentation">
-        <defs><marker id="guide-arrow-head" markerWidth="9" markerHeight="9" refX="4" refY="4.5" orient="auto"><path d="M9 0 0 4.5 9 9" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></marker></defs>
-        <path d="M178 72C137 27 91 25 20 42" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" markerEnd="url(#guide-arrow-head)" />
-      </svg>
+      <div className="guide-pointer"><ArrowLeft aria-hidden="true" /></div>
     </div>}
     <section ref={dialog} className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-description">
       <div className="guide-header"><span><Sparkles size={17} /> {language === 'ru' ? 'Помощник по сайту' : 'Site assistant'}</span><button ref={close} className="icon-btn" onClick={onClose} aria-label={language === 'ru' ? 'Закрыть помощника' : 'Close assistant'}><X size={18} /></button></div>
