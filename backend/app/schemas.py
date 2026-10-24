@@ -36,7 +36,7 @@ class Account(DTO):
 
 class Service(DTO):
     id: Id
-    name: str = Field(pattern=r'^[A-Za-z0-9-]+$', max_length=255)
+    name: str = Field(min_length=1, max_length=255)
     ownerId: Id
     paymentTerm: Literal['hour', 'week', 'month', 'quarter_year', 'half_year', 'year']
     autoProlong: StrictBool
@@ -44,6 +44,13 @@ class Service(DTO):
     expiresAt: datetime
     status: Literal['active', 'blocked', 'deleted', 'suspended', 'prolong_wait']
     price: Money
+
+    @field_validator('name')
+    @classmethod
+    def name_valid(cls, value):
+        if not value.strip() or '\x00' in value:
+            raise ValueError('Название услуги не может быть пустым или содержать нулевой символ')
+        return value
 
     @model_validator(mode='after')
     def dates_valid(self):
@@ -56,7 +63,7 @@ class Service(DTO):
 
 class Transaction(DTO):
     id: Id
-    amount: Annotated[StrictInt, Field(ge=0, le=1000)]
+    amount: Money
     status: Literal['performed', 'not_performed']
     performedAt: datetime | None
     createdAt: datetime

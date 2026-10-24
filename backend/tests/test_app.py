@@ -262,7 +262,7 @@ def test_source_contract_and_quality(source):
                 assert s['loss_eur'] is None
 
 
-@pytest.mark.parametrize('mutation', ['bonus','bool_money','owner','service','duplicate','performed','date','amount'])
+@pytest.mark.parametrize('mutation', ['bonus','bool_money','owner','service','duplicate','performed','date','amount','blank_name'])
 def test_invalid_snapshot(source, mutation):
     if mutation == 'bonus': source['accounts'][0]['bonusState'] = 'active'
     if mutation == 'bool_money': source['accounts'][0]['balance'] = True
@@ -271,8 +271,23 @@ def test_invalid_snapshot(source, mutation):
     if mutation == 'duplicate': source['accounts'][1]['id'] = 1
     if mutation == 'performed': source['transactions'][0]['performedAt'] = None
     if mutation == 'date': source['services'][0]['expiresAt'] = '2026-10-19T15:00:00'
-    if mutation == 'amount': source['transactions'][0]['amount'] = 1001
+    if mutation == 'amount': source['transactions'][0]['amount'] = -1
+    if mutation == 'blank_name': source['services'][0]['name'] = '   '
     with pytest.raises(ValidationError): Snapshot.model_validate(source)
+
+
+def test_source_accepts_arbitrary_service_name_and_large_transaction(client, source):
+    headers = sign_in(client)
+    source['services'][0]['name'] = 'Сервер № 1 / production'
+    source['transactions'][0]['amount'] = 2_500_000_000
+    imported = client.put('/api/v1/source/snapshot', headers=headers, json=source)
+    assert imported.status_code == 200
+    exported = client.get('/api/v1/source/snapshot').json()
+    assert exported['services'][0]['name'] == 'Сервер № 1 / production'
+    assert exported['transactions'][0]['amount'] == 2_500_000_000
+    summary = client.get('/api/v1/analytics/summary').json()
+    assert summary['calculation_version'] == imported.json()['calculation_version']
+    assert summary['transaction_count'] == len(source['transactions'])
 
 
 def test_money_formula_63_eur(source):

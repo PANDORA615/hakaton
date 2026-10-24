@@ -20,12 +20,12 @@ services = Table('services', metadata,
     CheckConstraint("status IN ('active','blocked','deleted','suspended','prolong_wait')"))
 Index('services_owner_id_idx', services.c.ownerId)
 transactions = Table('transactions', metadata,
-    Column('id', ID_TYPE, Identity(), primary_key=True), Column('amount', Integer, nullable=False),
+    Column('id', ID_TYPE, Identity(), primary_key=True), Column('amount', BigInteger, nullable=False),
     Column('status', Text, nullable=False, default='not_performed', server_default=text("'not_performed'")),
     Column('performedAt', DateTime(timezone=True)), Column('createdAt', DateTime(timezone=True), nullable=False, server_default=text('CURRENT_TIMESTAMP')),
     Column('type', Text, nullable=False),
     Column('serviceId', BigInteger, ForeignKey('services.id', ondelete='RESTRICT', onupdate='RESTRICT'), nullable=False),
-    CheckConstraint('amount BETWEEN 0 AND 1000'), CheckConstraint("type IN ('order','prolong')"),
+    CheckConstraint('amount >= 0', name='transactions_amount_nonnegative'), CheckConstraint("type IN ('order','prolong')"),
     CheckConstraint("(status='not_performed' AND \"performedAt\" IS NULL) OR (status='performed' AND \"performedAt\" IS NOT NULL AND \"performedAt\" >= \"createdAt\")"))
 Index('transactions_service_id_idx', transactions.c.serviceId)
 snapshots = Table('source_snapshots', metadata, Column('id', Integer, primary_key=True), Column('payload', JSON, nullable=False), Column('imported_at', String, nullable=False))
