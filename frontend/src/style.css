@@ -24,13 +24,13 @@
 }
 html[data-theme="dark"] {
   color-scheme: dark;
-  --border: #51453d;
-  --ink: #f4dfd1;
-  --muted: #d6c3b6;
-  --surface: #211a16;
-  --surface-container: #2b221d;
-  --surface-container-high: #382c25;
-  --on-surface-variant: #d6c3b6;
+  --border: #343434;
+  --ink: #f3f3f3;
+  --muted: #b9b9b9;
+  --surface: #151515;
+  --surface-container: #202020;
+  --surface-container-high: #2b2b2b;
+  --on-surface-variant: #c8c8c8;
   --primary-container: #753a0b;
   --on-primary-container: #ffdcc0;
 }
@@ -2181,8 +2181,8 @@ tbody tr:hover {
   text-align: center;
 }
 html[data-theme="dark"] .oidc-demo-page {
-  background: radial-gradient(circle at 18% 18%, #433024, transparent 36%),
-    radial-gradient(circle at 85% 85%, #35241c, transparent 32%), #141218;
+  background: radial-gradient(circle at 18% 18%, #251d18, transparent 36%),
+    radial-gradient(circle at 85% 85%, #1d1917, transparent 32%), #090909;
 }
 html[data-theme="dark"] .oidc-demo-card {
   background: var(--surface);
@@ -2213,13 +2213,13 @@ html[data-theme="dark"] .oidc-demo-kicker {
 }
 
 html[data-theme="dark"] {
-  background: #141218;
+  background: #090909;
   color: var(--ink);
 }
 html[data-theme="dark"] body,
 html[data-theme="dark"] .main-shell,
 html[data-theme="dark"] .login-form-area {
-  background: #141218;
+  background: #090909;
   color: var(--ink);
 }
 html[data-theme="dark"] .sidebar,
@@ -3180,11 +3180,11 @@ html[data-theme="dark"] body,
 html[data-theme="dark"] .main-shell,
 html[data-theme="dark"] .login-form-area,
 html[data-theme="dark"] .login-page {
-  background: #141218;
+  background: #090909;
   color: var(--ink);
 }
 html[data-theme="dark"] .login-story {
-  background: #111114;
+  background: #101010;
   color: #f2eef2;
 }
 html[data-theme="dark"] .login-orb {
