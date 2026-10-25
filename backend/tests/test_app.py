@@ -234,6 +234,11 @@ def test_account_profile_password_and_sessions(client):
     assert initial['login'] == 'admin'
     assert initial['last_login_at']
     assert initial['active_sessions'] == 1
+    assert len(initial['sessions']) == 1
+    assert initial['sessions'][0]['current'] is True
+    assert initial['sessions'][0]['auth_method'] == 'password'
+    assert initial['sessions'][0]['created_at']
+    assert [event['event_type'] for event in initial['recent_activity']] == ['login_password']
     profile = {'login': 'new.admin', 'display_name': 'Руководитель', 'email': 'owner@example.test'}
     assert client.put('/api/v1/account/profile', headers=headers, json=profile).status_code == 403
     changed = client.put('/api/v1/account/profile', headers=headers,
@@ -242,14 +247,17 @@ def test_account_profile_password_and_sessions(client):
     assert changed.json()['display_name'] == 'Руководитель'
     assert changed.json()['login'] == 'new.admin'
     assert changed.json()['email'] == 'owner@example.test'
+    assert changed.json()['recent_activity'][0]['event_type'] == 'profile_updated'
     assert client.put('/api/v1/account/profile', headers=headers,
                       json={**profile, 'email': 'invalid-email'}).status_code == 422
 
     other = TestClient(client.app)
     assert other.post('/api/v1/auth/login', json={'login': 'new.admin', 'password': PASSWORD}).status_code == 200
     assert client.get('/api/v1/account').json()['active_sessions'] == 2
+    assert sorted(session['current'] for session in client.get('/api/v1/account').json()['sessions']) == [False, True]
     revoked = client.post('/api/v1/account/sessions/revoke', headers=headers)
     assert revoked.json()['revoked'] == 1
+    assert client.get('/api/v1/account').json()['recent_activity'][0]['event_type'] == 'sessions_revoked'
     assert other.get('/api/v1/auth/me').status_code == 401
 
     assert client.post('/api/v1/account/password', headers=headers,
@@ -258,9 +266,12 @@ def test_account_profile_password_and_sessions(client):
                                    json={'current_password': PASSWORD, 'new_password': 'new-test-password-2841'})
     assert changed_password.status_code == 200
     assert client.get('/api/v1/account').json()['password_changed_at']
+    assert client.get('/api/v1/account').json()['recent_activity'][0]['event_type'] == 'password_changed'
     client.post('/api/v1/auth/logout', headers=headers)
     assert client.post('/api/v1/auth/login', json={'login': 'new.admin', 'password': PASSWORD}).status_code == 401
     assert client.post('/api/v1/auth/login', json={'login': 'new.admin', 'password': 'new-test-password-2841'}).status_code == 200
+    activity = client.get('/api/v1/account').json()['recent_activity']
+    assert [item['event_type'] for item in activity[:3]] == ['login_password', 'logout', 'password_changed']
 
 
 def test_account_settings_survive_restart(tmp_path):

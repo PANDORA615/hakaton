@@ -569,7 +569,9 @@ function App() {
     queryKey: ["account"],
     queryFn: () => api("/account"),
     enabled: !!user,
+    refetchInterval: view === "account" ? 15000 : false,
   });
+  useEffect(() => { if (view === "account" && user) void accountSummary.refetch(); }, [view, user?.login]);
   async function logout() {
     try {
       await api("/auth/logout", { method: "POST" });
@@ -2229,6 +2231,11 @@ function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }:
   onSuccess: (message: string) => void;
   onLogout: () => void;
 }) {
+  const activityLabels: Record<string, string> = {
+    login_password: "Вход по паролю", login_oidc: "Вход через OIDC",
+    profile_updated: "Профиль обновлён", password_changed: "Пароль изменён",
+    sessions_revoked: "Другие сеансы завершены", logout: "Выход из аккаунта",
+  };
   const [profile, setProfile] = useState({ login: "", display_name: "", email: "", current_password: "" });
   const [password, setPassword] = useState({ current: "", next: "", confirm: "" });
   const [profileError, setProfileError] = useState("");
@@ -2323,7 +2330,7 @@ function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }:
           </form>
         </section>
         <section className="panel account-panel">
-          <div className="account-section-heading"><Activity size={20} /><div><h3>Активность аккаунта</h3><p>Информация о ваших сеансах.</p></div></div>
+          <div className="account-section-heading"><Activity size={20} /><div><h3>Активность аккаунта</h3><p>История входов, изменений и действующие сеансы.</p></div></div>
           <dl className="account-facts">
             <div><dt>Последний вход</dt><dd>{data.last_login_at ? `${date(data.last_login_at)} МСК` : "Нет данных"}</dd></div>
             <div><dt>Текущий сеанс до</dt><dd>{date(data.session_expires_at)} МСК</dd></div>
@@ -2332,6 +2339,17 @@ function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }:
             <div><dt>Пароль изменён</dt><dd>{data.password_changed_at ? `${date(data.password_changed_at)} МСК` : "Не менялся"}</dd></div>
             <div><dt>Единый вход</dt><dd>{data.oidc_available ? "Подключён" : "Ожидает настройки провайдера"}</dd></div>
           </dl>
+          <h4 className="account-subheading">Действующие сеансы</h4>
+          <ul className="account-activity-list">
+            {(data.sessions || []).map((item: any, index: number) => <li key={`${item.created_at || item.expires_at}-${index}`}>
+              <div><strong>{item.current ? "Текущий сеанс" : "Другой сеанс"}</strong><span>{item.auth_method === "oidc" ? "OIDC" : item.auth_method === "password" ? "Пароль" : "Способ входа неизвестен"}{item.remember_me ? " · Запомнен" : ""}</span></div>
+              <small>{item.created_at ? `${date(item.created_at)} МСК` : "Начало неизвестно"} · {"До"} {date(item.expires_at)} МСК</small>
+            </li>)}
+          </ul>
+          <h4 className="account-subheading">Последние действия</h4>
+          {data.recent_activity?.length ? <ol className="account-activity-list">
+            {data.recent_activity.map((item: any) => <li key={item.id}><strong>{activityLabels[item.event_type] || item.event_type}</strong><small>{date(item.occurred_at)} МСК</small></li>)}
+          </ol> : <p className="account-activity-empty">История пока пуста.</p>}
           <div className="account-actions">
             <button className="secondary" onClick={revokeSessions} disabled={savingSecurity || data.active_sessions < 2}>Завершить другие сеансы</button>
             <button className="secondary" onClick={onLogout}><LogOut size={16} /> Выйти из аккаунта</button>

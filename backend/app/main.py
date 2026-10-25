@@ -342,25 +342,31 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             pass
         if not valid:
             raise HTTPException(401, 'Неверный логин или пароль')
-        return issue_session(user, response, request, remember_me=body.remember_me)
+        return issue_session(user, response, request, remember_me=body.remember_me, auth_method='password')
 
-    def issue_session(user, response, request, remember_me=False):
+    def record_account_event(conn, user_id, event_type, now=None):
+        conn.execute(insert(db.account_events).values(user_id=user_id, event_type=event_type,
+                                                     occurred_at=now or datetime.now(timezone.utc).isoformat()))
+
+    def issue_session(user, response, request, remember_me=False, auth_method='password'):
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
         lifetime = timedelta(days=30) if remember_me else timedelta(hours=8)
+        now = datetime.now(timezone.utc).isoformat()
         with engine.begin() as conn:
             conn.execute(delete(db.sessions).where(db.sessions.c.expires < datetime.now(timezone.utc).isoformat()))
             old = request.cookies.get(COOKIE)
             if old:
                 conn.execute(delete(db.sessions).where(db.sessions.c.token_hash == hashlib.sha256(old.encode()).hexdigest()))
             conn.execute(insert(db.sessions).values(token_hash=hashlib.sha256(token.encode()).hexdigest(), user_id=user['id'],
-                         csrf=csrf, expires=(datetime.now(timezone.utc) + lifetime).isoformat(), remember_me=remember_me))
-            now = datetime.now(timezone.utc).isoformat()
+                         csrf=csrf, expires=(datetime.now(timezone.utc) + lifetime).isoformat(), remember_me=remember_me,
+                         created_at=now, auth_method=auth_method))
             profile = conn.execute(select(db.user_profiles.c.user_id).where(db.user_profiles.c.user_id == user['id'])).first()
             if profile:
                 conn.execute(update(db.user_profiles).where(db.user_profiles.c.user_id == user['id']).values(last_login_at=now))
             else:
                 conn.execute(insert(db.user_profiles).values(user_id=user['id'], display_name=user['login'],
                                                        updated_at=now, last_login_at=now))
+            record_account_event(conn, user['id'], 'login_oidc' if auth_method == 'oidc' else 'login_password', now)
         cookie_options = {'max_age': int(lifetime.total_seconds())} if remember_me else {}
         response.set_cookie(COOKIE, token, httponly=True, secure=secure, samesite='strict', path='/', **cookie_options)
         return {'login': user['login'], 'csrf_token': csrf, 'remember_me': remember_me}
@@ -405,7 +411,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                 if user is None:
                     raise ValueError('Local administrator is unavailable')
                 response = RedirectResponse('/?oidc_login=success', status_code=303)
-                issue_session(user, response, request, remember_me=request.session.get('remember_me', False))
+                issue_session(user, response, request, remember_me=request.session.get('remember_me', False), auth_method='oidc')
                 return response
             except Exception as exc:
                 logger.warning('OIDC sign-in failed: %s', type(exc).__name__)
@@ -424,6 +430,15 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             active_sessions = conn.execute(select(func.count()).select_from(db.sessions).where(
                 db.sessions.c.user_id == session['user_id'],
                 db.sessions.c.expires > datetime.now(timezone.utc).isoformat())).scalar_one()
+            sessions = conn.execute(select(db.sessions.c.token_hash, db.sessions.c.created_at,
+                                           db.sessions.c.expires, db.sessions.c.remember_me, db.sessions.c.auth_method)
+                                    .where(db.sessions.c.user_id == session['user_id'],
+                                           db.sessions.c.expires > datetime.now(timezone.utc).isoformat())
+                                    .order_by(db.sessions.c.expires.desc())).mappings().all()
+            events = conn.execute(select(db.account_events.c.id, db.account_events.c.event_type,
+                                         db.account_events.c.occurred_at)
+                                  .where(db.account_events.c.user_id == session['user_id'])
+                                  .order_by(db.account_events.c.id.desc()).limit(20)).mappings().all()
         return {'id': session['user_id'], 'login': login_name,
                 'display_name': profile['display_name'] if profile else login_name,
                 'email': profile['email'] if profile else '',
@@ -431,7 +446,11 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                 'last_login_at': profile['last_login_at'] if profile else None,
                 'password_changed_at': profile['password_changed_at'] if profile else None,
                 'session_expires_at': session['expires'], 'remember_me': session['remember_me'], 'active_sessions': active_sessions,
-                'oidc_available': oidc_enabled}
+                'oidc_available': oidc_enabled,
+                'sessions': [{'current': row['token_hash'] == session['token_hash'],
+                              'created_at': row['created_at'], 'expires_at': row['expires'],
+                              'remember_me': row['remember_me'], 'auth_method': row['auth_method'] or 'unknown'} for row in sessions],
+                'recent_activity': [dict(row) for row in events]}
 
     @app.get('/api/v1/account', tags=['account'])
     def account(session=Depends(authorized)):
@@ -460,6 +479,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                 conn.execute(update(db.user_profiles).where(db.user_profiles.c.user_id == session['user_id']).values(**values))
             else:
                 conn.execute(insert(db.user_profiles).values(user_id=session['user_id'], **values))
+            record_account_event(conn, session['user_id'], 'profile_updated', now)
         return account_info(session)
 
     @app.post('/api/v1/account/password', tags=['account'])
@@ -477,6 +497,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             conn.execute(update(db.user_profiles).where(db.user_profiles.c.user_id == session['user_id']).values(password_changed_at=now))
             conn.execute(delete(db.sessions).where(db.sessions.c.user_id == session['user_id'],
                                                    db.sessions.c.token_hash != session['token_hash']))
+            record_account_event(conn, session['user_id'], 'password_changed', now)
         return {'ok': True, 'other_sessions_revoked': True}
 
     @app.post('/api/v1/account/sessions/revoke', tags=['account'])
@@ -484,12 +505,15 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         with engine.begin() as conn:
             result = conn.execute(delete(db.sessions).where(db.sessions.c.user_id == session['user_id'],
                                                            db.sessions.c.token_hash != session['token_hash']))
+            if result.rowcount:
+                record_account_event(conn, session['user_id'], 'sessions_revoked')
         return {'revoked': result.rowcount}
 
     @app.post('/api/v1/auth/logout', tags=['auth'])
     def logout(response: Response, user=Depends(authorized)):
         with engine.begin() as conn:
             conn.execute(delete(db.sessions).where(db.sessions.c.token_hash == user['token_hash']))
+            record_account_event(conn, user['user_id'], 'logout')
         response.delete_cookie(COOKIE, path='/')
         return {'ok': True}
 

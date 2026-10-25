@@ -43,7 +43,14 @@ user_profiles = Table('user_profiles', metadata,
     Column('password_changed_at', String))
 sessions = Table('sessions', metadata, Column('token_hash', String, primary_key=True), Column('user_id', Integer, ForeignKey('users.id'), nullable=False),
                  Column('csrf', String, nullable=False), Column('expires', String, nullable=False),
-                 Column('remember_me', Boolean, nullable=False, server_default=text('false')))
+                 Column('remember_me', Boolean, nullable=False, server_default=text('false')),
+                 Column('created_at', String), Column('auth_method', String(16)))
+account_events = Table('account_events', metadata,
+    Column('id', ID_TYPE, Identity(), primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+    Column('event_type', String(32), nullable=False),
+    Column('occurred_at', String, nullable=False))
+Index('account_events_user_recent_idx', account_events.c.user_id, account_events.c.id)
 competitor_tariffs = Table('competitor_tariffs', metadata,
     Column('provider', String(40), primary_key=True), Column('plans', JSON, nullable=False),
     Column('fetched_at', String), Column('attempted_at', String), Column('error', Text))

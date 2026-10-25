@@ -1042,6 +1042,13 @@ html[data-theme="dark"] .risk-filter-menu { box-shadow: 0 16px 35px #0007; }
 .account-facts > div { display: flex; justify-content: space-between; gap: 15px; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
 .account-facts dt { color: var(--muted); }
 .account-facts dd { margin: 0; color: var(--ink); font-weight: 700; text-align: right; }
+.account-subheading { margin: 22px 0 10px; color: var(--ink); font-size: 13px; }
+.account-activity-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.account-activity-list li { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 5px 14px; min-width: 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-container); color: var(--ink); font-size: 11px; }
+.account-activity-list li > div { display: grid; gap: 4px; }
+.account-activity-list span, .account-activity-list small, .account-activity-empty { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.account-activity-list small { overflow-wrap: anywhere; }
+.account-activity-empty { margin: 0 0 10px; }
 .account-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .account-actions .secondary { font-size: 11px; }
 @media (max-width: 1120px) { .account-layout { grid-template-columns: 1fr; } }
