@@ -230,10 +230,13 @@ class Store:
         with self.engine.connect() as conn:
             rows = conn.execute(select(db.marketing_actions).order_by(db.marketing_actions.c.id.asc())).mappings().all()
             contacts = conn.execute(select(db.marketing_contacts).order_by(db.marketing_contacts.c.id.desc())).mappings().all()
+            authors = dict(conn.execute(select(db.users.c.id, db.users.c.login)).all())
         history = {}
         for contact in contacts:
-            history.setdefault(contact['action_id'], []).append(dict(contact))
+            history.setdefault(contact['action_id'], []).append({**dict(contact),
+                'created_by_login': authors.get(contact['created_by_user_id'])})
         return [{**dict(row), 'customer': customers.get(row['customer_id']),
+                 'updated_by_login': authors.get(row['updated_by_user_id']),
                  'contacts': history.get(row['id'], [])} for row in rows]
 
     def quality_report(self):
@@ -295,6 +298,9 @@ class Store:
                 'completed_count': len(completed_items), 'contact_events_count': contact_events,
                 'linked_due_eur': linked_due(known_items),
                 'renewed_due_eur': linked_due(renewed_items),
+                'confirmed_retained_eur': float(sum((D(item['retained_amount_cents']) / 100 for item in renewed_items
+                    if item['retained_amount_cents'] is not None), D(0))),
+                'confirmed_amount_count': sum(item['retained_amount_cents'] is not None for item in renewed_items),
                 'money_missing_customers': sum(item['customer'] is None for item in known_items),
                 'money_partial_customers': sum(bool(item['customer'] and item['customer']['money_partial']) for item in known_items),
                 'calculation_version': self.current()['calculation_version'],
@@ -302,7 +308,8 @@ class Store:
                 'items': completed_items}
 
     def save_action(self, customer_id, status, note, outcome=None, expected_version=None,
-                    assignee=None, next_contact_at=None, update_followup=False):
+                    assignee=None, next_contact_at=None, update_followup=False, actor_id=None,
+                    retained_amount_cents=None, update_retained_amount=False):
         default_create = (status == 'open' and note == '' and outcome in (None, 'pending')
                           and not update_followup)
         with self.lock:
@@ -321,6 +328,11 @@ class Store:
                         chosen_outcome = outcome if outcome is not None else existing['outcome']
                         if chosen_outcome != 'pending' and status == 'open':
                             raise ValueError('Сначала отметьте контакт с клиентом')
+                        amount = retained_amount_cents if update_retained_amount else existing['retained_amount_cents']
+                        if chosen_outcome != 'renewed' and not update_retained_amount:
+                            amount = None
+                        if amount is not None and (chosen_outcome != 'renewed' or status != 'resolved'):
+                            raise ValueError('Подтверждённая сумма допускается только для завершённого продления')
                         recorded_at = existing['outcome_recorded_at'] if chosen_outcome == existing['outcome'] else (now if chosen_outcome != 'pending' else None)
                         result = conn.execute(update(db.marketing_actions).where(
                             db.marketing_actions.c.id == existing['id'],
@@ -328,6 +340,8 @@ class Store:
                                 'status': status, 'note': note, 'outcome': chosen_outcome,
                                 'outcome_recorded_at': recorded_at, 'updated_at': now,
                                 'version': expected_version + 1,
+                                'updated_by_user_id': actor_id,
+                                'retained_amount_cents': amount,
                                 **({'assignee': assignee, 'next_contact_at': next_contact_at} if update_followup else {})}))
                         if result.rowcount != 1:
                             raise ActionConflict(existing)
@@ -337,10 +351,13 @@ class Store:
                         chosen_outcome = outcome or 'pending'
                         if chosen_outcome != 'pending' and status == 'open':
                             raise ValueError('Сначала отметьте контакт с клиентом')
+                        if retained_amount_cents is not None and (chosen_outcome != 'renewed' or status != 'resolved'):
+                            raise ValueError('Подтверждённая сумма допускается только для завершённого продления')
                         now = datetime.now(timezone.utc).isoformat()
                         conn.execute(insert(db.marketing_actions).values(customer_id=customer_id, status=status,
                             note=note, outcome=chosen_outcome, outcome_recorded_at=now if chosen_outcome != 'pending' else None,
                             assignee=assignee, next_contact_at=next_contact_at,
+                            updated_by_user_id=actor_id, retained_amount_cents=retained_amount_cents,
                             updated_at=now, version=1))
             except IntegrityError as exc:
                 if not default_create:
@@ -350,7 +367,7 @@ class Store:
                     raise ActionConflict(current) from exc
             return next(action for action in self.actions() if action['customer_id'] == customer_id)
 
-    def record_contact(self, customer_id, channel, note, expected_version, next_contact_at=None):
+    def record_contact(self, customer_id, channel, note, expected_version, next_contact_at=None, actor_id=None):
         with self.lock:
             with self.engine.begin() as conn:
                 existing = conn.execute(select(db.marketing_actions).where(
@@ -364,9 +381,10 @@ class Store:
                     db.marketing_actions.c.id == existing['id'],
                     db.marketing_actions.c.version == expected_version).values(
                         status='contacted', next_contact_at=next_contact_at,
-                        version=expected_version + 1, updated_at=now))
+                        version=expected_version + 1, updated_at=now, updated_by_user_id=actor_id))
                 if updated.rowcount != 1:
                     raise ActionConflict(existing)
                 conn.execute(insert(db.marketing_contacts).values(
-                    action_id=existing['id'], channel=channel, note=note, contacted_at=now))
+                    action_id=existing['id'], channel=channel, note=note, contacted_at=now,
+                    created_by_user_id=actor_id))
             return next(action for action in self.actions() if action['customer_id'] == customer_id)

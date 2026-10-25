@@ -52,6 +52,7 @@ import { api, ApiError, setCSRF, levels, money, date, Level, setDisplayPreferenc
 import { installTranslations } from "./i18n";
 import { GlobalSearch, HelpCenter, GuideDialog, FoxQuestionDialog, GUIDE_ENTRIES, AppView, HelpTarget } from './navigation';
 import { CompetitorRadar } from './competitorRadar';
+import { StaffManager } from './StaffManager';
 import "./style.css";
 
 const client = new QueryClient({
@@ -357,7 +358,7 @@ function LoginPage({
             Решения, основанные на данных.
           </p>
           <span className="story-footer">
-            <Activity size={17} /> Aéza Retention · beta 0.9
+            <Activity size={17} /> Aéza Retention · v1.0
           </span>
         </div>
       </div>
@@ -547,6 +548,7 @@ function App() {
     enabled: !!user,
     refetchInterval: 60 * 60 * 1000,
   });
+  const tariffHealth = useQuery({ queryKey: ['tariff-health'], queryFn: () => api('/competitors/tariffs'), enabled: !!user, refetchInterval: 60 * 60 * 1000 });
   setDisplayPreferences(currency, language, fx.data);
   useEffect(() => {
     localStorage.setItem("aeza-currency", currency);
@@ -717,7 +719,7 @@ function App() {
               ["actions", ClipboardList, "Работа с клиентами"],
               ["outcomes", CheckCircle2, "Результаты"],
             ] as const
-          ).map(([id, Icon, label]) => (
+          ).filter(([id]) => accountSummary.data?.role !== 'employee' || !['settings', 'source'].includes(id)).map(([id, Icon, label]) => (
             <button
               key={id}
               className={view === id ? "active" : ""}
@@ -728,6 +730,7 @@ function App() {
               {id === "customers" && summary.data && (
                 <span className="nav-count">{summary.data.customer_count}</span>
               )}
+              {id === 'competitors' && !!(tariffHealth.data?.failed_count || tariffHealth.data?.stale_count) && <span className="nav-count" title="Проверьте актуальность тарифов">!</span>}
             </button>
           ))}
         </nav>
@@ -803,7 +806,7 @@ function App() {
                 <button role="menuitem" onClick={() => navigate("account")}><Settings2 size={17} /> Настройки аккаунта</button>
                 <button role="menuitem" onClick={() => navigate("appearance")}><Palette size={17} /> Настройки сайта</button>
                 <button role="menuitem" onClick={() => navigate("help")}><BookOpen size={17} /> Справочник</button>
-                <button role="menuitem" onClick={() => navigate("settings")}><SlidersHorizontal size={17} /> Модель риска</button>
+                {accountSummary.data?.role !== 'employee' && <button role="menuitem" onClick={() => navigate("settings")}><SlidersHorizontal size={17} /> Модель риска</button>}
                 <button role="menuitem" onClick={() => { setProfileMenuOpen(false); logout(); }}><LogOut size={17} /> Выйти</button>
               </div>}
             </div>
@@ -848,7 +851,7 @@ function App() {
               </p>
             </div>
             <div className="heading-actions">
-              <HorizonFilter value={summary.data?.horizon_days ?? 7} disabled={horizonPending || !summary.data} onChange={changeHorizon} />
+              <HorizonFilter value={summary.data?.horizon_days ?? 7} disabled={horizonPending || !summary.data || accountSummary.data?.role === 'employee'} onChange={changeHorizon} />
               {view === "overview" && (
                 <>
                   <button className="secondary" onClick={showForecast}>
@@ -876,6 +879,7 @@ function App() {
               </span>
             </div>
           )}
+          {view === 'overview' && !!(tariffHealth.data?.failed_count || tariffHealth.data?.stale_count) && <button className="tariff-warning" onClick={() => navigate('competitors')}>Некоторые тарифы не обновились или старше трёх дней. Проверьте даты и официальные источники в конкурентном радаре. <ArrowRight size={16} /></button>}
           {view === "overview" &&
             (summary.data ? (
               <>
@@ -1871,6 +1875,7 @@ function OutcomesPanel({ onSelect }: { onSelect: (id: number) => void }) {
       <article className="panel outcome-kpi"><span>Доля продлений</span><strong>{data.renewal_share_pct === null ? '—' : `${data.renewal_share_pct}%`}</strong><small>Среди {data.known_total} известных итогов</small></article>
       <article className="panel outcome-kpi"><span>Платежи клиентов с известным итогом</span><strong>{money(data.linked_due_eur)}</strong><small>По текущему расчёту, не выручка</small></article>
       <article className="panel outcome-kpi"><span>Из них с отметкой «Продлил»</span><strong>{money(data.renewed_due_eur)}</strong><small>Сценарные платежи этих клиентов</small></article>
+      <article className="panel outcome-kpi"><span>Подтверждённо оплачено</span><strong>{money(data.confirmed_retained_eur)}</strong><small>Вручную указано для {data.confirmed_amount_count} продлений; не доказательство влияния контакта</small></article>
     </section>
     <p className="outcome-context">{`Денежные суммы взяты из расчёта #${data.calculation_version}.`}{' '}{data.money_missing_customers > 0 && `${data.money_missing_customers} клиентов отсутствуют в текущем снимке и не входят в сумму. `}{data.money_partial_customers > 0 && `У ${data.money_partial_customers} клиентов оценка платежей неполная.`}</p>
     <section className="panel outcome-history">
@@ -1894,13 +1899,15 @@ function ResultCard({ item, onSelect }: { item: any; onSelect: (id: number) => v
     <div className="result-card-body">
       <div className="result-card-facts">
         <div><span>Ответственный</span><strong>{item.assignee || 'Не назначен'}</strong></div>
+        <div><span>Последнее изменение</span><strong>{item.updated_by_login || 'Неизвестно'}</strong></div>
         <div><span>Итог продления</span><strong>{outcomeLabel}</strong></div>
         <div><span>Сохранено</span><strong>{`${date(item.updated_at)} МСК`}</strong></div>
         {item.next_contact_at && <div><span>Запланированный контакт</span><strong>{`${date(item.next_contact_at)} МСК`}</strong></div>}
       </div>
       <div className="result-card-note"><strong>Сохранённая заметка</strong><p>{item.note || 'Заметка не добавлена'}</p></div>
+      {item.retained_amount_cents !== null && <div className="result-card-note"><strong>Подтверждённо оплачено</strong><p>{money(item.retained_amount_cents / 100)}</p></div>}
       <div className="result-card-contacts"><strong>{`История контактов · ${item.contacts?.length ?? 0}`}</strong>
-        {item.contacts?.length ? <ol>{item.contacts.map((contact: any) => <li key={contact.id}><span>{contact.channel === 'call' ? 'Звонок' : contact.channel === 'email' ? 'Письмо' : contact.channel === 'chat' ? 'Чат' : 'Другое'} · {date(contact.contacted_at)} МСК</span><p>{contact.note}</p></li>)}</ol> : <p>Разговоры не записаны.</p>}
+        {item.contacts?.length ? <ol>{item.contacts.map((contact: any) => <li key={contact.id}><span>{contact.channel === 'call' ? 'Звонок' : contact.channel === 'email' ? 'Письмо' : contact.channel === 'chat' ? 'Чат' : 'Другое'} · {date(contact.contacted_at)} МСК · {contact.created_by_login || 'Автор неизвестен'}</span><p>{contact.note}</p></li>)}</ol> : <p>Разговоры не записаны.</p>}
       </div>
       {item.customer && <div className="result-card-current"><span>Текущие данные клиента: {formatReason(item.customer.reason)}</span><strong>{money(item.customer.due_eur)} прогнозируемых платежей</strong><button type="button" className="secondary" onClick={() => onSelect(item.customer_id)}>Открыть профиль клиента <ArrowRight size={15} /></button></div>}
       {!item.customer && <p className="result-card-missing">Клиента нет в текущем снимке, но сохранённая карточка и история контактов доступны.</p>}
@@ -1913,7 +1920,7 @@ function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; 
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState(() => {
     const saved = localStorage.getItem('aeza-action-filter');
-    return ['all', 'due', 'open', 'contacted'].includes(saved || '') ? saved! : 'all';
+    return ['all', 'due', 'open', 'contacted', 'resolved'].includes(saved || '') ? saved! : 'all';
   });
   useEffect(() => { localStorage.setItem('aeza-action-filter', filter); }, [filter]);
   if (query.isError) return <ErrorBox message={query.error.message} />;
@@ -1926,7 +1933,7 @@ function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; 
   const visible = (filter === 'all' ? activeItems : filter === 'due' ? activeItems.filter(due) : activeItems.filter((item) => item.status === filter))
     .sort((a: any, b: any) => Number(due(b)) - Number(due(a)) || a.id - b.id);
   const filters = [
-    ['all', 'Все'], ['due', 'Напоминания'], ['open', 'В работе'], ['contacted', 'Связались'],
+    ['all', 'Все'], ['due', 'Напоминания'], ['open', 'В работе'], ['contacted', 'Связались'], ['resolved', 'Завершено'],
   ];
   function updateSavedCard(saved: any, finished: boolean) {
     const stillMatches = filter === 'all' || (filter === 'due' ? due(saved) : saved.status === filter);
@@ -1938,12 +1945,11 @@ function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; 
     queryClient.invalidateQueries({ queryKey: ["actions"] });
   }
   return <section className="panel action-panel">
-    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Здесь остаются только активные карточки. Кнопка «Сохранить в результаты» завершает работу и переносит карточку.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
+    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>По умолчанию показаны активные карточки. Завершённые доступны по фильтру и в «Результатах».</p></div><span className="subtle-tag">{activeCount} активных</span></div>
     {dueCount > 0 && <div className="action-reminder" role="status">Пора связаться с {dueCount} клиентами. Откройте «Напоминания».</div>}
-    <div className="action-filters" aria-label="Фильтр контактов">{filters.map(([key, label]) => <button key={key} type="button" className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label} <span>{key === 'all' ? activeCount : key === 'due' ? dueCount : activeItems.filter((item) => item.status === key).length}</span></button>)}</div>
-    {activeCount === 0 && <div className="empty"><ClipboardList size={28} /><h3>Очередь пуста</h3><p>Откройте клиента и нажмите «Добавить в работу».</p></div>}
-    {activeCount > 0 && visible.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Нет записей с таким статусом</h3></div>}
-    <div className="action-list">{visible.map((action: any) => <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={updateSavedCard} />)}</div>
+    <div className="action-filters" aria-label="Фильтр контактов">{filters.map(([key, label]) => <button key={key} type="button" className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label} <span>{key === 'all' ? activeCount : key === 'due' ? dueCount : items.filter((item) => item.status === key).length}</span></button>)}</div>
+    {visible.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>{filter === 'all' ? 'Очередь пуста' : 'Нет записей с таким статусом'}</h3><p>{filter === 'all' ? 'Откройте клиента и нажмите «Добавить в работу».' : ''}</p></div>}
+    <div className="action-list">{visible.map((action: any) => action.status === 'resolved' ? <ResultCard key={action.id} item={action} onSelect={onSelect} /> : <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={updateSavedCard} />)}</div>
   </section>;
 }
 
@@ -1952,6 +1958,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
   const [status, setStatus] = useState(action.status);
   const [note, setNote] = useState(action.note);
   const [outcome, setOutcome] = useState(action.outcome ?? 'pending');
+  const [retainedAmount, setRetainedAmount] = useState(action.retained_amount_cents === null ? '' : String(displayFromEuro(action.retained_amount_cents / 100).toFixed(2)));
   const [assignee, setAssignee] = useState(action.assignee ?? '');
   const [nextContact, setNextContact] = useState(asLocal(action.next_contact_at));
   const [channel, setChannel] = useState('call');
@@ -1969,6 +1976,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       setStatus(action.status);
       setNote(action.note);
       setOutcome(action.outcome ?? 'pending');
+      setRetainedAmount(action.retained_amount_cents === null ? '' : String(displayFromEuro(action.retained_amount_cents / 100).toFixed(2)));
       setAssignee(action.assignee ?? '');
       setNextContact(asLocal(action.next_contact_at));
       setBaseVersion(action.version);
@@ -1980,6 +1988,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       setStatus(current.status);
       setNote(current.note);
       setOutcome(current.outcome ?? 'pending');
+      setRetainedAmount(current.retained_amount_cents === null ? '' : String(displayFromEuro(current.retained_amount_cents / 100).toFixed(2)));
       setAssignee(current.assignee ?? '');
       setNextContact(asLocal(current.next_contact_at));
       setDirty(false);
@@ -1993,7 +2002,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
     setPending(true);
     setError("");
     try {
-      const saved = await api(`/actions/${action.customer_id}`, { method: "PUT", body: JSON.stringify({ status: finish ? 'resolved' : status, note, outcome: finish ? outcome : action.outcome, assignee, next_contact_at: nextContact ? new Date(nextContact).toISOString() : null, expected_version: baseVersion }) });
+      const saved = await api(`/actions/${action.customer_id}`, { method: "PUT", body: JSON.stringify({ status: finish ? 'resolved' : status, note, outcome: finish ? outcome : action.outcome, assignee, next_contact_at: nextContact ? new Date(nextContact).toISOString() : null, expected_version: baseVersion, ...(finish ? { retained_amount_cents: outcome === 'renewed' && retainedAmount !== '' ? euroCentsFromDisplay(Number(retainedAmount)) : null } : {}) }) });
       setBaseVersion(saved.version);
       setDirty(false);
       setConflict(null);
@@ -2038,13 +2047,14 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       <label>Следующий контакт<input type="datetime-local" value={nextContact} onChange={(event) => { setNextContact(event.target.value); setDirty(true); }} /></label>
       <div className="action-status-label">Статус: <strong>{status === 'contacted' ? 'Связались' : 'В работе'}</strong></div>
       <label>Итог продления<select value={outcome} onChange={(event) => { setOutcome(event.target.value); setDirty(true); }}><option value="pending">Ожидаем</option><option value="renewed">Продлил</option><option value="not_renewed">Не продлил</option></select></label>
+      {outcome === 'renewed' && <label>Подтверждённо оплачено, {currencySymbol()}<input type="number" min="0" step="0.01" value={retainedAmount} onChange={(event) => { setRetainedAmount(event.target.value); setDirty(true); }} placeholder="Если платёж подтверждён" /></label>}
       <label>Заметка<textarea value={note} maxLength={2000} onChange={(event) => { setNote(event.target.value); setDirty(true); }} placeholder="Что обсудили с клиентом" /></label>
     </div>
     {error && <ErrorBox message={error} />}
     {conflict && <div className="action-conflict" role="alert"><strong>Запись обновилась в другой вкладке</strong><p>Актуальная заметка: {conflict.note || 'без заметки'}. Ваш черновик сохранён в форме.</p><div><button type="button" className="secondary" onClick={() => loadCurrent(conflict, false)}>Загрузить актуальное</button><button type="button" className="secondary" onClick={() => loadCurrent(conflict, true)}>Оставить мой черновик</button></div></div>}
-    <div className="action-card-foot"><span>Обновлено {date(action.updated_at)} МСК</span><div className="action-save-buttons"><button className="secondary" disabled={pending || outcome !== (action.outcome ?? 'pending')} onClick={() => save(false)}>Сохранить план</button><button className="primary" disabled={pending} onClick={() => save(true)}>Сохранить в результаты</button></div></div>
+    <div className="action-card-foot"><span>Обновлено {date(action.updated_at)} МСК · {action.updated_by_login || 'Автор неизвестен'}</span><div className="action-save-buttons"><button className="secondary" disabled={pending || outcome !== (action.outcome ?? 'pending')} onClick={() => save(false)}>Сохранить план</button><button className="primary" disabled={pending} onClick={() => save(true)}>Сохранить в результаты</button></div></div>
     <div className="action-contact-form"><strong>Записать разговор</strong><div className="action-fields"><label>Канал<select value={channel} onChange={(event) => setChannel(event.target.value)}><option value="call">Звонок</option><option value="email">Письмо</option><option value="chat">Чат</option><option value="other">Другое</option></select></label><label>Итог контакта<textarea value={contactNote} maxLength={2000} onChange={(event) => setContactNote(event.target.value)} placeholder="Что обсудили и о чём договорились" /></label></div><button className="secondary" type="button" disabled={pending || dirty || !contactNote.trim()} onClick={recordContact}>Добавить в историю</button>{dirty && <small>Сначала сохраните изменения карточки.</small>}</div>
-    <details className="action-history"><summary>История контактов · {action.contacts?.length ?? 0}</summary>{action.contacts?.length ? <ol>{action.contacts.map((contact: any) => <li key={contact.id}><strong>{contact.channel === 'call' ? 'Звонок' : contact.channel === 'email' ? 'Письмо' : contact.channel === 'chat' ? 'Чат' : 'Другое'}</strong> · {date(contact.contacted_at)} МСК<p>{contact.note}</p></li>)}</ol> : <p>Пока нет записанных разговоров.</p>}</details>
+    <details className="action-history"><summary>История контактов · {action.contacts?.length ?? 0}</summary>{action.contacts?.length ? <ol>{action.contacts.map((contact: any) => <li key={contact.id}><strong>{contact.channel === 'call' ? 'Звонок' : contact.channel === 'email' ? 'Письмо' : contact.channel === 'chat' ? 'Чат' : 'Другое'}</strong> · {date(contact.contacted_at)} МСК · {contact.created_by_login || 'Автор неизвестен'}<p>{contact.note}</p></li>)}</ol> : <p>Пока нет записанных разговоров.</p>}</details>
   </article>;
 }
 
@@ -2235,6 +2245,7 @@ function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }:
     login_password: "Вход по паролю", login_oidc: "Вход через OIDC",
     profile_updated: "Профиль обновлён", password_changed: "Пароль изменён",
     sessions_revoked: "Другие сеансы завершены", logout: "Выход из аккаунта",
+    staff_created: "Сотрудник создан", staff_updated: "Учётная запись сотрудника изменена",
   };
   const [profile, setProfile] = useState({ login: "", display_name: "", email: "", current_password: "" });
   const [password, setPassword] = useState({ current: "", next: "", confirm: "" });
@@ -2355,6 +2366,7 @@ function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }:
             <button className="secondary" onClick={onLogout}><LogOut size={16} /> Выйти из аккаунта</button>
           </div>
         </section>
+        {data.role === 'admin' && <StaffManager />}
       </div>
     </div>
   );

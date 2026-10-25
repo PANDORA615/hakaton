@@ -32,6 +32,9 @@ def test_refresh_retains_last_good_snapshot_and_marks_stale():
     after = catalog.catalog()['providers'][0]
     assert after['plans'] == first['plans']
     assert after['stale'] and after['error'] and after['fetched_at'] == old
+    health = catalog.catalog()
+    assert health['failed_count'] >= 1 and health['stale_count'] >= 1
+    assert after['attempted_at'] and health['checked_at']
     engine.dispose()
 
 

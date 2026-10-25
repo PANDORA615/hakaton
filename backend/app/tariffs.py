@@ -262,6 +262,10 @@ class TariffCatalog:
             fetched = row.get('fetched_at')
             stale = not fetched or now - datetime.fromisoformat(fetched) > REFRESH_INTERVAL
             result.append(dict(id=provider, name=name, source_url=url, fetched_at=fetched,
+                               attempted_at=row.get('attempted_at'),
                                next_refresh_at=(datetime.fromisoformat(fetched)+REFRESH_INTERVAL).isoformat() if fetched else None,
                                stale=stale, error=row.get('error'), plans=row.get('plans') or []))
-        return {'refresh_interval_hours': 72, 'providers': result}
+        return {'refresh_interval_hours': 72, 'checked_at': now.isoformat(),
+                'stale_count': sum(item['stale'] for item in result),
+                'failed_count': sum(bool(item['error']) for item in result),
+                'providers': result}

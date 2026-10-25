@@ -69,6 +69,19 @@ class PasswordChange(BaseModel):
     new_password: str = Field(min_length=12, max_length=1024)
 
 
+class StaffCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    login: str = Field(min_length=3, max_length=40, pattern=r'^[A-Za-z0-9_.-]+$')
+    display_name: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=12, max_length=1024)
+
+
+class StaffUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    is_active: bool | None = None
+    new_password: str | None = Field(default=None, min_length=12, max_length=1024)
+
+
 class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra='forbid')
     expected_settings_version: int | None = None
@@ -130,6 +143,7 @@ class ActionRequest(BaseModel):
     expected_version: int | None = Field(default=None, ge=0)
     assignee: str | None = Field(default=None, max_length=80)
     next_contact_at: datetime | None = None
+    retained_amount_cents: int | None = Field(default=None, ge=0, le=9223372036854775807, strict=True)
 
     @field_validator('next_contact_at')
     @classmethod
@@ -256,7 +270,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             await tariff_task
         engine.dispose()
 
-    app = FastAPI(title='Aéza Retention API', version='0.9.0-beta', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title='Aéza Retention API', version='1.0.0', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
     if oidc_enabled:
         app.add_middleware(SessionMiddleware, secret_key=oidc_config['OIDC_SESSION_SECRET'],
@@ -285,8 +299,8 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         hashed = hashlib.sha256(token.encode()).hexdigest()
         with engine.connect() as conn:
             row = conn.execute(
-                select(db.sessions, db.users.c.login).join(db.users).where(db.sessions.c.token_hash == hashed)).mappings().first()
-            if row and datetime.fromisoformat(row['expires']) > datetime.now(timezone.utc):
+                select(db.sessions, db.users.c.login, db.users.c.role, db.users.c.is_active).join(db.users).where(db.sessions.c.token_hash == hashed)).mappings().first()
+            if row and row['is_active'] and datetime.fromisoformat(row['expires']) > datetime.now(timezone.utc):
                 return dict(row)
         return None
 
@@ -297,6 +311,11 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         if request.method not in {'GET', 'HEAD', 'OPTIONS'}:
             if not hmac.compare_digest(request.headers.get('x-csrf-token', '').encode(), session['csrf'].encode()):
                 raise HTTPException(403, 'Неверный CSRF-токен')
+        return session
+
+    def admin_only(session=Depends(authorized)):
+        if session['role'] != 'admin':
+            raise HTTPException(403, 'Доступно только администратору')
         return session
 
     def version(data):
@@ -337,7 +356,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         valid = False
         try:
             # Verify against a dummy hash too, avoiding a cheap username oracle.
-            valid = PasswordHasher().verify(user['password_hash'] if user else app.state.dummy_hash, body.password) and bool(user)
+            valid = PasswordHasher().verify(user['password_hash'] if user else app.state.dummy_hash, body.password) and bool(user and user['is_active'])
         except (VerificationError, InvalidHashError):
             pass
         if not valid:
@@ -369,7 +388,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             record_account_event(conn, user['id'], 'login_oidc' if auth_method == 'oidc' else 'login_password', now)
         cookie_options = {'max_age': int(lifetime.total_seconds())} if remember_me else {}
         response.set_cookie(COOKIE, token, httponly=True, secure=secure, samesite='strict', path='/', **cookie_options)
-        return {'login': user['login'], 'csrf_token': csrf, 'remember_me': remember_me}
+        return {'login': user['login'], 'role': user['role'], 'csrf_token': csrf, 'remember_me': remember_me}
 
     app.state.dummy_hash = PasswordHasher().hash(secrets.token_urlsafe(24))
 
@@ -407,7 +426,8 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                     logger.warning('OIDC sign-in rejected: subject is not authorized')
                     return RedirectResponse('/?auth_error=oidc_unauthorized', status_code=303)
                 with engine.connect() as conn:
-                    user = conn.execute(select(db.users).order_by(db.users.c.id).limit(1)).mappings().first()
+                    user = conn.execute(select(db.users).where(db.users.c.role == 'admin', db.users.c.is_active == True)
+                                        .order_by(db.users.c.id).limit(1)).mappings().first()
                 if user is None:
                     raise ValueError('Local administrator is unavailable')
                 response = RedirectResponse('/?oidc_login=success', status_code=303)
@@ -421,7 +441,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
 
     @app.get('/api/v1/auth/me', tags=['auth'])
     def me(user=Depends(authorized)):
-        return {'login': user['login'], 'csrf_token': user['csrf'], 'remember_me': user['remember_me']}
+        return {'login': user['login'], 'role': user['role'], 'csrf_token': user['csrf'], 'remember_me': user['remember_me']}
 
     def account_info(session):
         with engine.connect() as conn:
@@ -439,7 +459,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
                                          db.account_events.c.occurred_at)
                                   .where(db.account_events.c.user_id == session['user_id'])
                                   .order_by(db.account_events.c.id.desc()).limit(20)).mappings().all()
-        return {'id': session['user_id'], 'login': login_name,
+        return {'id': session['user_id'], 'login': login_name, 'role': session['role'],
                 'display_name': profile['display_name'] if profile else login_name,
                 'email': profile['email'] if profile else '',
                 'profile_updated_at': profile['updated_at'] if profile else None,
@@ -455,6 +475,50 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     @app.get('/api/v1/account', tags=['account'])
     def account(session=Depends(authorized)):
         return account_info(session)
+
+    @app.get('/api/v1/staff', tags=['staff'])
+    def staff(_=Depends(admin_only)):
+        with engine.connect() as conn:
+            rows = conn.execute(select(db.users.c.id, db.users.c.login, db.users.c.role, db.users.c.is_active,
+                                       db.user_profiles.c.display_name)
+                                .outerjoin(db.user_profiles, db.users.c.id == db.user_profiles.c.user_id)
+                                .order_by(db.users.c.id)).mappings().all()
+        return {'items': [dict(row) for row in rows]}
+
+    @app.post('/api/v1/staff', status_code=201, tags=['staff'])
+    def create_staff(body: StaffCreate, admin=Depends(admin_only)):
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            with engine.begin() as conn:
+                staff_id = conn.execute(insert(db.users).values(login=body.login,
+                    password_hash=PasswordHasher().hash(body.password), role='employee', is_active=True)
+                    .returning(db.users.c.id)).scalar_one()
+                conn.execute(insert(db.user_profiles).values(user_id=staff_id, display_name=body.display_name.strip(), updated_at=now))
+                record_account_event(conn, admin['user_id'], 'staff_created', now)
+        except IntegrityError as exc:
+            raise HTTPException(409, 'Логин уже занят') from exc
+        return {'id': staff_id, 'login': body.login, 'display_name': body.display_name.strip(), 'role': 'employee', 'is_active': True}
+
+    @app.patch('/api/v1/staff/{staff_id}', tags=['staff'])
+    def update_staff(staff_id: int, body: StaffUpdate, admin=Depends(admin_only)):
+        if body.is_active is None and body.new_password is None:
+            raise HTTPException(422, 'Укажите изменение')
+        with engine.begin() as conn:
+            target = conn.execute(select(db.users).where(db.users.c.id == staff_id)).mappings().first()
+            if target is None:
+                raise HTTPException(404, 'Сотрудник не найден')
+            if target['role'] == 'admin':
+                raise HTTPException(403, 'Этим способом нельзя изменить администратора')
+            values = {}
+            if body.is_active is not None:
+                values['is_active'] = body.is_active
+            if body.new_password is not None:
+                values['password_hash'] = PasswordHasher().hash(body.new_password)
+            conn.execute(update(db.users).where(db.users.c.id == staff_id).values(**values))
+            if body.new_password is not None or body.is_active is False:
+                conn.execute(delete(db.sessions).where(db.sessions.c.user_id == staff_id))
+            record_account_event(conn, admin['user_id'], 'staff_updated')
+        return {'id': staff_id, 'is_active': values.get('is_active', target['is_active']), 'sessions_revoked': body.new_password is not None or body.is_active is False}
 
     @app.put('/api/v1/account/profile', tags=['account'])
     def save_profile(body: ProfileUpdate, session=Depends(authorized)):
@@ -579,12 +643,13 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         return store.action_outcomes()
 
     @app.put('/api/v1/actions/{customer_id}', dependencies=[Depends(authorized)], tags=['actions'])
-    def save_action(customer_id: int, body: ActionRequest):
+    def save_action(customer_id: int, body: ActionRequest, session=Depends(authorized)):
         try:
             return store.save_action(customer_id, body.status, body.note, body.outcome, body.expected_version,
                 body.assignee.strip() or None if body.assignee is not None else None,
                 body.next_contact_at.isoformat() if body.next_contact_at else None,
-                bool({'assignee', 'next_contact_at'} & body.model_fields_set))
+                bool({'assignee', 'next_contact_at'} & body.model_fields_set),
+                session['user_id'], body.retained_amount_cents, 'retained_amount_cents' in body.model_fields_set)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from exc
         except ActionConflict as exc:
@@ -593,10 +658,10 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             raise HTTPException(422, str(exc)) from exc
 
     @app.post('/api/v1/actions/{customer_id}/contacts', dependencies=[Depends(authorized)], tags=['actions'])
-    def record_contact(customer_id: int, body: ContactRequest):
+    def record_contact(customer_id: int, body: ContactRequest, session=Depends(authorized)):
         try:
             return store.record_contact(customer_id, body.channel, body.note.strip(), body.expected_version,
-                body.next_contact_at.isoformat() if body.next_contact_at else None)
+                body.next_contact_at.isoformat() if body.next_contact_at else None, session['user_id'])
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from exc
         except ActionConflict as exc:
@@ -606,7 +671,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     def settings():
         return store.settings()
 
-    @app.patch('/api/v1/model/settings', dependencies=[Depends(authorized)], tags=['model'])
+    @app.patch('/api/v1/model/settings', dependencies=[Depends(admin_only)], tags=['model'])
     def update_settings(body: SettingsPatch):
         try:
             changed = body.model_dump(exclude_unset=True)
@@ -619,7 +684,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
         except ValidationError as exc:
             raise HTTPException(422, json.loads(exc.json(include_context=False))) from exc
 
-    @app.put('/api/v1/source/snapshot', dependencies=[Depends(authorized)], tags=['source'])
+    @app.put('/api/v1/source/snapshot', dependencies=[Depends(admin_only)], tags=['source'])
     def import_snapshot(body: Snapshot):
         data = store.replace_snapshot(body)
         return {**version(data), 'status': 'completed', 'counts': {k: len(v) for k, v in body.model_dump().items()}, 'warnings': data['summary']['warnings']}
@@ -628,13 +693,13 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     def export_snapshot():
         return store.source()
 
-    @app.post('/api/v1/source/demo', dependencies=[Depends(authorized)], tags=['source'])
+    @app.post('/api/v1/source/demo', dependencies=[Depends(admin_only)], tags=['source'])
     def add_demo():
         from .scenarios import demo_snapshot
         data = store.replace_snapshot(Snapshot.model_validate(demo_snapshot(store.source(), store.now())))
         return {**version(data), 'status': 'completed'}
 
-    @app.post('/api/v1/source/original', dependencies=[Depends(authorized)], tags=['source'])
+    @app.post('/api/v1/source/original', dependencies=[Depends(admin_only)], tags=['source'])
     def reset_original():
         with open(fixture, encoding='utf-8') as source:
             snapshot = Snapshot.model_validate(json.load(source))
@@ -683,6 +748,9 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             Gauge(name, help_text, registry=registry).set(value)
         Counter('churn_recalculations', 'Published calculations', registry=registry).inc(data['calculation_version'])
         Counter('churn_recalculation_failures', 'Timer calculation errors since process start', registry=registry).inc(store.failures)
+        tariff_health = tariff_catalog.catalog()
+        Gauge('churn_tariff_stale_sources', 'Tariff providers requiring refresh', registry=registry).set(tariff_health['stale_count'])
+        Gauge('churn_tariff_failed_sources', 'Tariff providers whose last refresh failed', registry=registry).set(tariff_health['failed_count'])
         return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
     @app.get('/api/v1/docs', dependencies=[Depends(authorized)], include_in_schema=False)

@@ -1,6 +1,6 @@
 {
   "name": "aeza-retention",
-  "version": "0.9.0-beta",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {"dev": "vite --host 0.0.0.0 --port 4173", "build": "tsc -b && vite build"},

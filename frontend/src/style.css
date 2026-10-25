@@ -1049,10 +1049,22 @@ html[data-theme="dark"] .risk-filter-menu { box-shadow: 0 16px 35px #0007; }
 .account-activity-list span, .account-activity-list small, .account-activity-empty { color: var(--muted); font-size: 10px; line-height: 1.5; }
 .account-activity-list small { overflow-wrap: anywhere; }
 .account-activity-empty { margin: 0 0 10px; }
+.staff-create-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.staff-create-form > button { grid-column: 1 / -1; justify-self: start; }
+.staff-list { display: grid; gap: 10px; padding: 0; margin: 20px 0 0; list-style: none; }
+.staff-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 13px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-container); }
+.staff-list li > div:first-child { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.staff-list small { color: var(--muted); }
+.staff-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.staff-reset-form { width: 100%; display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.staff-reset-form label { flex: 1 1 180px; }
+.staff-feedback { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-container); }
+.tariff-warning { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; margin: 12px 0; padding: 13px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-container); color: var(--ink); text-align: left; cursor: pointer; }
+.tariff-warning:hover { border-color: var(--orange); }
 .account-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .account-actions .secondary { font-size: 11px; }
 @media (max-width: 1120px) { .account-layout { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .account-fields { grid-template-columns: 1fr; } .account-panel { padding: 18px; } .account-hero { padding: 18px; } }
+@media (max-width: 560px) { .account-fields, .staff-create-form { grid-template-columns: 1fr; } .account-panel { padding: 18px; } .account-hero { padding: 18px; } .staff-actions { width: 100%; } .staff-actions button { flex: 1 1 130px; min-height: 44px; } }
 .count-tag {
   background: #f6f6f7;
   border: 1px solid #ededef;

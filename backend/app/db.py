@@ -33,7 +33,9 @@ snapshots = Table('source_snapshots', metadata, Column('id', Integer, primary_ke
 settings_versions = Table('model_settings_versions', metadata, Column('id', Integer, primary_key=True), Column('payload', JSON, nullable=False))
 runs = Table('calculation_runs', metadata, Column('id', Integer, primary_key=True), Column('source_version', Integer, nullable=False),
              Column('settings_version', Integer, nullable=False), Column('as_of', String, nullable=False), Column('payload', JSON, nullable=False), Column('duration', String, nullable=False))
-users = Table('users', metadata, Column('id', Integer, primary_key=True), Column('login', String, unique=True, nullable=False), Column('password_hash', Text, nullable=False))
+users = Table('users', metadata, Column('id', Integer, primary_key=True), Column('login', String, unique=True, nullable=False), Column('password_hash', Text, nullable=False),
+              Column('role', String(16), nullable=False, server_default=text("'admin'")),
+              Column('is_active', Boolean, nullable=False, server_default=text('true')))
 user_profiles = Table('user_profiles', metadata,
     Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
     Column('display_name', String(80), nullable=False, server_default=text("''")),
@@ -63,6 +65,8 @@ marketing_actions = Table('marketing_actions', metadata,
     Column('outcome_recorded_at', String),
     Column('assignee', String(80)),
     Column('next_contact_at', String),
+    Column('updated_by_user_id', Integer, ForeignKey('users.id', ondelete='SET NULL')),
+    Column('retained_amount_cents', BigInteger),
     Column('version', Integer, nullable=False, server_default=text('1')),
     Column('updated_at', String, nullable=False),
     CheckConstraint("status IN ('open','contacted','resolved')"))
@@ -72,6 +76,7 @@ marketing_contacts = Table('marketing_contacts', metadata,
     Column('channel', String(16), nullable=False),
     Column('note', Text, nullable=False),
     Column('contacted_at', String, nullable=False),
+    Column('created_by_user_id', Integer, ForeignKey('users.id', ondelete='SET NULL')),
     CheckConstraint("channel IN ('call','email','chat','other')"))
 
 

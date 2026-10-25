@@ -232,6 +232,7 @@ def test_account_profile_password_and_sessions(client):
     headers = sign_in(client)
     initial = client.get('/api/v1/account').json()
     assert initial['login'] == 'admin'
+    assert initial['role'] == 'admin'
     assert initial['last_login_at']
     assert initial['active_sessions'] == 1
     assert len(initial['sessions']) == 1
@@ -430,6 +431,51 @@ def test_auth_csrf_and_logout(client):
     old_cookie = client.cookies.get('aeza_session')
     assert client.post('/api/v1/auth/logout',headers=headers).status_code == 200
     assert client.get('/api/v1/customers', headers={'Cookie':'aeza_session='+old_cookie}).status_code == 401
+
+
+def test_staff_roles_audit_and_confirmed_outcome(client):
+    admin_headers = sign_in(client)
+    assert client.get('/api/v1/staff').json()['items'][0]['role'] == 'admin'
+    created = client.post('/api/v1/staff', headers=admin_headers,
+                          json={'login': 'operator.one', 'display_name': 'Оператор', 'password': 'operator-secret-2841'})
+    assert created.status_code == 201, created.text
+    staff_id = created.json()['id']
+    assert client.post('/api/v1/staff', headers=admin_headers,
+                       json={'login': 'operator.one', 'display_name': 'Дубль', 'password': 'operator-secret-2841'}).status_code == 409
+    employee = TestClient(client.app)
+    signed = employee.post('/api/v1/auth/login', json={'login': 'operator.one', 'password': 'operator-secret-2841'})
+    assert signed.status_code == 200
+    employee_headers = {'X-CSRF-Token': signed.json()['csrf_token']}
+    assert employee.get('/api/v1/account').json()['role'] == 'employee'
+    assert employee.get('/api/v1/staff').status_code == 403
+    assert employee.patch('/api/v1/model/settings', headers=employee_headers, json={'horizon_days': 8}).status_code == 403
+    assert employee.post('/api/v1/source/demo', headers=employee_headers).status_code == 403
+    assert employee.put('/api/v1/actions/1', headers=employee_headers,
+                        json={'status': 'open', 'note': 'Позвонить'}).status_code == 200
+    action = employee.get('/api/v1/actions').json()['items'][0]
+    assert action['updated_by_login'] == 'operator.one'
+    contact = employee.post('/api/v1/actions/1/contacts', headers=employee_headers,
+                            json={'channel': 'call', 'note': 'Согласовал продление', 'expected_version': 1})
+    assert contact.status_code == 200
+    assert contact.json()['contacts'][0]['created_by_login'] == 'operator.one'
+    assert employee.put('/api/v1/actions/1', headers=employee_headers,
+                        json={'status': 'resolved', 'outcome': 'not_renewed', 'expected_version': 2,
+                              'retained_amount_cents': 100}).status_code == 422
+    saved = employee.put('/api/v1/actions/1', headers=employee_headers,
+                         json={'status': 'resolved', 'outcome': 'renewed', 'expected_version': 2,
+                               'retained_amount_cents': 12345})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['retained_amount_cents'] == 12345
+    results = employee.get('/api/v1/actions/outcomes').json()
+    assert results['confirmed_retained_eur'] == 123.45
+    assert results['confirmed_amount_count'] == 1
+    assert employee.patch(f'/api/v1/staff/{staff_id}', headers=employee_headers, json={'is_active': False}).status_code == 403
+    assert client.patch(f'/api/v1/staff/{staff_id}', headers=admin_headers, json={'is_active': False}).status_code == 200
+    assert employee.get('/api/v1/auth/me').status_code == 401
+    assert employee.post('/api/v1/auth/login', json={'login': 'operator.one', 'password': 'operator-secret-2841'}).status_code == 401
+    assert client.patch(f'/api/v1/staff/{staff_id}', headers=admin_headers,
+                        json={'is_active': True, 'new_password': 'new-operator-secret-2841'}).status_code == 200
+    assert employee.post('/api/v1/auth/login', json={'login': 'operator.one', 'password': 'new-operator-secret-2841'}).status_code == 200
 
 
 def test_settings_recalc_conflict_and_persistence(client, app):
