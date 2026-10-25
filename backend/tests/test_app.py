@@ -510,6 +510,44 @@ def test_marketing_actions(client, app, source):
         assert saved[0]['status'] == 'resolved' and saved[0]['note'] == 'Завершено'
 
 
+def test_contact_followups_are_persistent_and_conflict_safe(client, app):
+    headers = sign_in(client)
+    create = client.put('/api/v1/actions/1', headers=headers, json={'status': 'open', 'note': ''})
+    assert create.status_code == 200
+    due = '2026-10-25T09:30:00+03:00'
+    assigned = client.put('/api/v1/actions/1', headers=headers, json={
+        'status': 'open', 'note': 'Позвонить', 'assignee': 'Анна',
+        'next_contact_at': due, 'expected_version': 1})
+    assert assigned.status_code == 200
+    assert assigned.json()['assignee'] == 'Анна'
+    assert assigned.json()['next_contact_at'] == due
+    stale = client.post('/api/v1/actions/1/contacts', headers=headers, json={
+        'channel': 'call', 'note': 'Обсудили тариф', 'expected_version': 1})
+    assert stale.status_code == 409
+    assert client.get('/api/v1/actions').json()['items'][0]['contacts'] == []
+    first = client.post('/api/v1/actions/1/contacts', headers=headers, json={
+        'channel': 'call', 'note': 'Обсудили тариф', 'expected_version': 2,
+        'next_contact_at': '2026-10-26T09:30:00+03:00'})
+    assert first.status_code == 200
+    assert first.json()['status'] == 'contacted'
+    assert first.json()['version'] == 3
+    assert len(first.json()['contacts']) == 1
+    second = client.post('/api/v1/actions/1/contacts', headers=headers, json={
+        'channel': 'email', 'note': 'Отправили предложение', 'expected_version': 3})
+    assert second.status_code == 200
+    assert [event['channel'] for event in second.json()['contacts']] == ['email', 'call']
+    assert client.post('/api/v1/actions/1/contacts', headers=headers, json={
+        'channel': 'call', 'note': '  ', 'expected_version': 4}).status_code == 422
+    assert client.post('/api/v1/actions/1/contacts', json={
+        'channel': 'call', 'note': 'Без csrf', 'expected_version': 4}).status_code == 403
+    reopened = create_app(str(app.state.store.engine.url), str(DATA_PATH), PASSWORD, NOW, testing=True)
+    with TestClient(reopened) as second_client:
+        sign_in(second_client)
+        saved = second_client.get('/api/v1/actions').json()['items'][0]
+        assert saved['assignee'] == 'Анна'
+        assert len(saved['contacts']) == 2
+
+
 def test_metrics_and_openapi(client):
     headers = sign_in(client)
     summary = client.get('/api/v1/analytics/summary').json()

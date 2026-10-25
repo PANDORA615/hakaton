@@ -801,6 +801,70 @@
         ]
       }
     },
+    "/api/v1/actions/{customer_id}/contacts": {
+      "post": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Record Contact",
+        "operationId": "record_contact_api_v1_actions__customer_id__contacts_post",
+        "parameters": [
+          {
+            "name": "customer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Customer Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "csrf_token returned by login/me"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/model/settings": {
       "get": {
         "tags": [
@@ -1188,6 +1252,30 @@
               }
             ],
             "title": "Expected Version"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "next_contact_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Contact At"
           }
         },
         "additionalProperties": false,
@@ -1196,6 +1284,46 @@
           "status"
         ],
         "title": "ActionRequest"
+      },
+      "ContactRequest": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "pattern": "^(call|email|chat|other)$",
+            "title": "Channel"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note"
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          },
+          "next_contact_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Contact At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "channel",
+          "note",
+          "expected_version"
+        ],
+        "title": "ContactRequest"
       },
       "CustomerCreate": {
         "properties": {

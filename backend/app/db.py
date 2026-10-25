@@ -54,9 +54,18 @@ marketing_actions = Table('marketing_actions', metadata,
     Column('note', Text, nullable=False, server_default=text("''")),
     Column('outcome', String, nullable=False, server_default=text("'pending'")),
     Column('outcome_recorded_at', String),
+    Column('assignee', String(80)),
+    Column('next_contact_at', String),
     Column('version', Integer, nullable=False, server_default=text('1')),
     Column('updated_at', String, nullable=False),
     CheckConstraint("status IN ('open','contacted','resolved')"))
+marketing_contacts = Table('marketing_contacts', metadata,
+    Column('id', ID_TYPE, Identity(), primary_key=True),
+    Column('action_id', Integer, nullable=False),
+    Column('channel', String(16), nullable=False),
+    Column('note', Text, nullable=False),
+    Column('contacted_at', String, nullable=False),
+    CheckConstraint("channel IN ('call','email','chat','other')"))
 
 
 def make_engine(url):

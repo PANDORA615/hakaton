@@ -229,7 +229,12 @@ class Store:
         customers = {customer['id']: customer for customer in current['customers']}
         with self.engine.connect() as conn:
             rows = conn.execute(select(db.marketing_actions).order_by(db.marketing_actions.c.id.asc())).mappings().all()
-        return [{**dict(row), 'customer': customers.get(row['customer_id'])} for row in rows]
+            contacts = conn.execute(select(db.marketing_contacts).order_by(db.marketing_contacts.c.id.desc())).mappings().all()
+        history = {}
+        for contact in contacts:
+            history.setdefault(contact['action_id'], []).append(dict(contact))
+        return [{**dict(row), 'customer': customers.get(row['customer_id']),
+                 'contacts': history.get(row['id'], [])} for row in rows]
 
     def action_outcomes(self):
         items = self.actions()
@@ -241,8 +246,10 @@ class Store:
                 'renewal_share_pct': round(100 * renewed / known, 1) if known else None,
                 'items': [item for item in items if item['outcome'] != 'pending']}
 
-    def save_action(self, customer_id, status, note, outcome=None, expected_version=None):
-        default_create = status == 'open' and note == '' and outcome in (None, 'pending')
+    def save_action(self, customer_id, status, note, outcome=None, expected_version=None,
+                    assignee=None, next_contact_at=None, update_followup=False):
+        default_create = (status == 'open' and note == '' and outcome in (None, 'pending')
+                          and not update_followup)
         with self.lock:
             customer_exists = any(customer['id'] == customer_id for customer in self.current()['customers'])
             try:
@@ -262,9 +269,11 @@ class Store:
                         recorded_at = existing['outcome_recorded_at'] if chosen_outcome == existing['outcome'] else (now if chosen_outcome != 'pending' else None)
                         result = conn.execute(update(db.marketing_actions).where(
                             db.marketing_actions.c.id == existing['id'],
-                            db.marketing_actions.c.version == expected_version).values(
-                                status=status, note=note, outcome=chosen_outcome, outcome_recorded_at=recorded_at,
-                                updated_at=now, version=expected_version + 1))
+                            db.marketing_actions.c.version == expected_version).values(**{
+                                'status': status, 'note': note, 'outcome': chosen_outcome,
+                                'outcome_recorded_at': recorded_at, 'updated_at': now,
+                                'version': expected_version + 1,
+                                **({'assignee': assignee, 'next_contact_at': next_contact_at} if update_followup else {})}))
                         if result.rowcount != 1:
                             raise ActionConflict(existing)
                     else:
@@ -276,6 +285,7 @@ class Store:
                         now = datetime.now(timezone.utc).isoformat()
                         conn.execute(insert(db.marketing_actions).values(customer_id=customer_id, status=status,
                             note=note, outcome=chosen_outcome, outcome_recorded_at=now if chosen_outcome != 'pending' else None,
+                            assignee=assignee, next_contact_at=next_contact_at,
                             updated_at=now, version=1))
             except IntegrityError as exc:
                 if not default_create:
@@ -283,4 +293,25 @@ class Store:
                         current = conn.execute(select(db.marketing_actions).where(
                             db.marketing_actions.c.customer_id == customer_id)).mappings().first()
                     raise ActionConflict(current) from exc
+            return next(action for action in self.actions() if action['customer_id'] == customer_id)
+
+    def record_contact(self, customer_id, channel, note, expected_version, next_contact_at=None):
+        with self.lock:
+            with self.engine.begin() as conn:
+                existing = conn.execute(select(db.marketing_actions).where(
+                    db.marketing_actions.c.customer_id == customer_id)).mappings().first()
+                if existing is None:
+                    raise LookupError('Добавьте клиента в очередь перед записью контакта')
+                if expected_version != existing['version']:
+                    raise ActionConflict(existing)
+                now = datetime.now(timezone.utc).isoformat()
+                updated = conn.execute(update(db.marketing_actions).where(
+                    db.marketing_actions.c.id == existing['id'],
+                    db.marketing_actions.c.version == expected_version).values(
+                        status='contacted', next_contact_at=next_contact_at,
+                        version=expected_version + 1, updated_at=now))
+                if updated.rowcount != 1:
+                    raise ActionConflict(existing)
+                conn.execute(insert(db.marketing_contacts).values(
+                    action_id=existing['id'], channel=channel, note=note, contacted_at=now))
             return next(action for action in self.actions() if action['customer_id'] == customer_id)

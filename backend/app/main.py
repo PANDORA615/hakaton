@@ -128,6 +128,35 @@ class ActionRequest(BaseModel):
     note: str = Field(default='', max_length=2000)
     outcome: str | None = Field(default=None, pattern='^(pending|renewed|not_renewed)$')
     expected_version: int | None = Field(default=None, ge=0)
+    assignee: str | None = Field(default=None, max_length=80)
+    next_contact_at: datetime | None = None
+
+    @field_validator('next_contact_at')
+    @classmethod
+    def contact_date_has_timezone(cls, value):
+        if value is not None and value.utcoffset() is None:
+            raise ValueError('Укажите дату со смещением часового пояса')
+        return value
+
+
+class ContactRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    channel: str = Field(pattern='^(call|email|chat|other)$')
+    note: str = Field(min_length=1, max_length=2000)
+    expected_version: int = Field(ge=1)
+    next_contact_at: datetime | None = None
+
+    @field_validator('note')
+    @classmethod
+    def contact_note_not_blank(cls, value):
+        if not value.strip():
+            raise ValueError('Опишите результат контакта')
+        return value
+
+    @field_validator('next_contact_at')
+    @classmethod
+    def contact_date_has_timezone(cls, value):
+        return ActionRequest.contact_date_has_timezone(value)
 
 
 def create_app(database_url=None, data_path=None, password=None, fixed_as_of=None, testing=False):
@@ -524,13 +553,26 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     @app.put('/api/v1/actions/{customer_id}', dependencies=[Depends(authorized)], tags=['actions'])
     def save_action(customer_id: int, body: ActionRequest):
         try:
-            return store.save_action(customer_id, body.status, body.note, body.outcome, body.expected_version)
+            return store.save_action(customer_id, body.status, body.note, body.outcome, body.expected_version,
+                body.assignee.strip() or None if body.assignee is not None else None,
+                body.next_contact_at.isoformat() if body.next_contact_at else None,
+                bool({'assignee', 'next_contact_at'} & body.model_fields_set))
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from exc
         except ActionConflict as exc:
             raise HTTPException(409, {'message': str(exc), 'current': exc.current}) from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @app.post('/api/v1/actions/{customer_id}/contacts', dependencies=[Depends(authorized)], tags=['actions'])
+    def record_contact(customer_id: int, body: ContactRequest):
+        try:
+            return store.record_contact(customer_id, body.channel, body.note.strip(), body.expected_version,
+                body.next_contact_at.isoformat() if body.next_contact_at else None)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except ActionConflict as exc:
+            raise HTTPException(409, {'message': str(exc), 'current': exc.current}) from exc
 
     @app.get('/api/v1/model/settings', dependencies=[Depends(authorized)], tags=['model'])
     def settings():

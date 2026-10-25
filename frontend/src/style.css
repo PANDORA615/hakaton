@@ -3540,6 +3540,7 @@ body,
 .scenario-panel input,
 .scenario-panel select,
 .action-fields select,
+.action-fields input,
 .action-fields textarea {
   width: 100%;
   padding: 10px 12px;
@@ -3603,6 +3604,18 @@ body,
 .action-fields label:last-child {
   grid-column: 1 / -1;
 }
+.action-reminder { margin: 0 20px 18px; padding: 12px 15px; border: 1px solid color-mix(in srgb, var(--orange) 55%, var(--border)); border-radius: 14px; background: var(--primary-container); color: var(--on-primary-container); font-size: 12px; font-weight: 700; }
+.action-card .action-due { padding: 8px 11px; border-radius: 10px; background: var(--surface); color: var(--on-surface-variant); }
+.action-card .action-due.overdue { border: 1px solid var(--orange); color: var(--ink); }
+.action-contact-form { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.action-contact-form > strong { font-size: 13px; }
+.action-contact-form > small { display: block; margin-top: 8px; color: var(--muted); }
+.action-contact-form .secondary { padding: 9px 12px; }
+.action-history { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; font-size: 12px; }
+.action-history summary { cursor: pointer; font-weight: 700; }
+.action-history ol { padding-left: 22px; }
+.action-history li { margin: 10px 0; overflow-wrap: anywhere; }
+.action-history li p { margin: 4px 0; }
 .profile-menu {
   position: relative;
 }

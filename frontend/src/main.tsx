@@ -1884,20 +1884,24 @@ function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; 
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState(() => {
     const saved = localStorage.getItem('aeza-action-filter');
-    return ['all', 'open', 'contacted', 'resolved'].includes(saved || '') ? saved! : 'all';
+    return ['all', 'due', 'open', 'contacted', 'resolved'].includes(saved || '') ? saved! : 'all';
   });
   useEffect(() => { localStorage.setItem('aeza-action-filter', filter); }, [filter]);
   if (query.isError) return <ErrorBox message={query.error.message} />;
   if (query.isPending) return <Loading />;
   const items = query.data.items as any[];
   const activeCount = items.filter((item) => item.status !== 'resolved').length;
-  const visible = filter === 'all' ? items : items.filter((item) => item.status === filter);
+  const due = (item: any) => item.status !== 'resolved' && item.next_contact_at && Date.parse(item.next_contact_at) <= Date.now();
+  const dueCount = items.filter(due).length;
+  const visible = (filter === 'all' ? items : filter === 'due' ? items.filter(due) : items.filter((item) => item.status === filter))
+    .sort((a: any, b: any) => Number(due(b)) - Number(due(a)) || a.id - b.id);
   const filters = [
-    ['all', 'Все'], ['open', 'В работе'], ['contacted', 'Связались'], ['resolved', 'Завершено'],
+    ['all', 'Все'], ['due', 'Напоминания'], ['open', 'В работе'], ['contacted', 'Связались'], ['resolved', 'Завершено'],
   ];
   return <section className="panel action-panel">
-    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Постоянный список по порядку добавления. Контакты и результаты сохраняются на сервере.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
-    <div className="action-filters" aria-label="Фильтр контактов">{filters.map(([key, label]) => <button key={key} type="button" className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label} <span>{key === 'all' ? items.length : items.filter((item) => item.status === key).length}</span></button>)}</div>
+    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Назначайте ответственного, планируйте следующий звонок и фиксируйте каждый разговор.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
+    {dueCount > 0 && <div className="action-reminder" role="status">Пора связаться с {dueCount} клиентами. Откройте «Напоминания».</div>}
+    <div className="action-filters" aria-label="Фильтр контактов">{filters.map(([key, label]) => <button key={key} type="button" className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label} <span>{key === 'all' ? items.length : key === 'due' ? dueCount : items.filter((item) => item.status === key).length}</span></button>)}</div>
     {items.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Очередь пуста</h3><p>Откройте клиента и нажмите «Добавить в работу».</p></div>}
     {items.length > 0 && visible.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Нет записей с таким статусом</h3></div>}
     <div className="action-list">{visible.map((action: any) => <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={() => queryClient.invalidateQueries({ queryKey: ["actions"] })} />)}</div>
@@ -1905,9 +1909,14 @@ function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; 
 }
 
 function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onSelect: (id: number) => void; onSuccess: (message: string) => void; onSaved: () => void }) {
+  const asLocal = (value: string | null) => value ? new Date(value).toLocaleString('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(' ', 'T') : '';
   const [status, setStatus] = useState(action.status);
   const [note, setNote] = useState(action.note);
   const [outcome, setOutcome] = useState(action.outcome ?? 'pending');
+  const [assignee, setAssignee] = useState(action.assignee ?? '');
+  const [nextContact, setNextContact] = useState(asLocal(action.next_contact_at));
+  const [channel, setChannel] = useState('call');
+  const [contactNote, setContactNote] = useState('');
   const [baseVersion, setBaseVersion] = useState(action.version);
   const [dirty, setDirty] = useState(false);
   const [conflict, setConflict] = useState<any>(null);
@@ -1921,6 +1930,8 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       setStatus(action.status);
       setNote(action.note);
       setOutcome(action.outcome ?? 'pending');
+      setAssignee(action.assignee ?? '');
+      setNextContact(asLocal(action.next_contact_at));
       setBaseVersion(action.version);
       setConflict(null);
     }
@@ -1930,6 +1941,8 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       setStatus(current.status);
       setNote(current.note);
       setOutcome(current.outcome ?? 'pending');
+      setAssignee(current.assignee ?? '');
+      setNextContact(asLocal(current.next_contact_at));
       setDirty(false);
     }
     setBaseVersion(current.version);
@@ -1941,7 +1954,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
     setPending(true);
     setError("");
     try {
-      const saved = await api(`/actions/${action.customer_id}`, { method: "PUT", body: JSON.stringify({ status, note, outcome, expected_version: baseVersion }) });
+      const saved = await api(`/actions/${action.customer_id}`, { method: "PUT", body: JSON.stringify({ status, note, outcome, assignee, next_contact_at: nextContact ? new Date(nextContact).toISOString() : null, expected_version: baseVersion }) });
       setBaseVersion(saved.version);
       setDirty(false);
       setConflict(null);
@@ -1955,6 +1968,24 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       setPending(false);
     }
   }
+  async function recordContact() {
+    if (pending || !contactNote.trim() || dirty) return;
+    setPending(true);
+    setError('');
+    try {
+      const saved = await api(`/actions/${action.customer_id}/contacts`, { method: 'POST', body: JSON.stringify({ channel, note: contactNote.trim(), next_contact_at: nextContact ? new Date(nextContact).toISOString() : null, expected_version: baseVersion }) });
+      setBaseVersion(saved.version);
+      setContactNote('');
+      onSaved();
+      onSuccess('Контакт добавлен в историю');
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) setConflict(cause.detail?.current ?? action);
+      setError((cause as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
+  const overdue = action.status !== 'resolved' && action.next_contact_at && Date.parse(action.next_contact_at) <= Date.now();
   return <article className="action-card">
     <div className="action-card-head">
       <button disabled={!action.customer} onClick={() => onSelect(action.customer_id)}>{action.customer?.email ?? `Клиент #${action.customer_id} · нет в текущих данных`}</button>
@@ -1962,7 +1993,10 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
     </div>
     {action.customer?.phone && <a className="action-phone" href={`tel:${action.customer.phone}`}>Позвонить: {action.customer.phone}</a>}
     {action.customer && <p>{formatReason(action.customer.reason)} · {money(action.customer.loss_eur)} под риском</p>}
+    {action.next_contact_at && <p className={overdue ? 'action-due overdue' : 'action-due'}>{overdue ? 'Напоминание: срок наступил' : 'Следующий контакт'} · {date(action.next_contact_at)} МСК</p>}
     <div className="action-fields">
+      <label>Ответственный<input value={assignee} maxLength={80} onChange={(event) => { setAssignee(event.target.value); setDirty(true); }} placeholder="Имя сотрудника" /></label>
+      <label>Следующий контакт<input type="datetime-local" value={nextContact} onChange={(event) => { setNextContact(event.target.value); setDirty(true); }} /></label>
       <label>Статус<select value={status} onChange={(event) => { setStatus(event.target.value); setDirty(true); }}><option value="open">В работе</option><option value="contacted">Связались</option><option value="resolved">Завершено</option></select></label>
       <label>Итог продления<select value={outcome} onChange={(event) => { setOutcome(event.target.value); setDirty(true); }}><option value="pending">Ожидаем</option><option value="renewed">Продлил</option><option value="not_renewed">Не продлил</option></select></label>
       <label>Заметка<textarea value={note} maxLength={2000} onChange={(event) => { setNote(event.target.value); setDirty(true); }} placeholder="Что обсудили с клиентом" /></label>
@@ -1970,6 +2004,8 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
     {error && <ErrorBox message={error} />}
     {conflict && <div className="action-conflict" role="alert"><strong>Запись обновилась в другой вкладке</strong><p>Актуальная заметка: {conflict.note || 'без заметки'}. Ваш черновик сохранён в форме.</p><div><button type="button" className="secondary" onClick={() => loadCurrent(conflict, false)}>Загрузить актуальное</button><button type="button" className="secondary" onClick={() => loadCurrent(conflict, true)}>Оставить мой черновик</button></div></div>}
     <div className="action-card-foot"><span>Обновлено {date(action.updated_at)} МСК</span><button className="primary" disabled={pending} onClick={save}>Сохранить</button></div>
+    <div className="action-contact-form"><strong>Записать разговор</strong><div className="action-fields"><label>Канал<select value={channel} onChange={(event) => setChannel(event.target.value)}><option value="call">Звонок</option><option value="email">Письмо</option><option value="chat">Чат</option><option value="other">Другое</option></select></label><label>Итог контакта<textarea value={contactNote} maxLength={2000} onChange={(event) => setContactNote(event.target.value)} placeholder="Что обсудили и о чём договорились" /></label></div><button className="secondary" type="button" disabled={pending || dirty || !contactNote.trim()} onClick={recordContact}>Добавить в историю</button>{dirty && <small>Сначала сохраните изменения карточки.</small>}</div>
+    <details className="action-history"><summary>История контактов · {action.contacts?.length ?? 0}</summary>{action.contacts?.length ? <ol>{action.contacts.map((contact: any) => <li key={contact.id}><strong>{contact.channel === 'call' ? 'Звонок' : contact.channel === 'email' ? 'Письмо' : contact.channel === 'chat' ? 'Чат' : 'Другое'}</strong> · {date(contact.contacted_at)} МСК<p>{contact.note}</p></li>)}</ol> : <p>Пока нет записанных разговоров.</p>}</details>
   </article>;
 }
 
