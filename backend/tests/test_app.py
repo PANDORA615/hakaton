@@ -540,6 +540,27 @@ def test_marketing_actions(client, app, source):
         assert saved[0]['status'] == 'resolved' and saved[0]['note'] == 'Завершено'
 
 
+def test_only_completed_cards_appear_in_results_even_without_outcome(client):
+    headers = sign_in(client)
+    assert client.put('/api/v1/actions/1', headers=headers,
+                      json={'status': 'open', 'note': 'Планируем звонок'}).status_code == 200
+    assert client.get('/api/v1/actions/outcomes').json()['items'] == []
+    completed = client.put('/api/v1/actions/1', headers=headers,
+                           json={'status': 'resolved', 'note': 'Доклад сохранён', 'outcome': 'pending', 'expected_version': 1})
+    assert completed.status_code == 200
+    assert completed.json()['status'] == 'resolved'
+    assert client.get('/api/v1/actions').json()['items'][0]['status'] == 'resolved'
+    results = client.get('/api/v1/actions/outcomes').json()
+    assert [item['customer_id'] for item in results['items']] == [1]
+    assert results['pending'] == 1 and results['completed_count'] == 1
+
+    assert client.put('/api/v1/actions/2', headers=headers,
+                      json={'status': 'contacted', 'outcome': 'renewed', 'note': 'Ещё в работе'}).status_code == 200
+    results = client.get('/api/v1/actions/outcomes').json()
+    assert [item['customer_id'] for item in results['items']] == [1]
+    assert results['renewed'] == 0 and results['pending'] == 1
+
+
 def test_contact_followups_are_persistent_and_conflict_safe(client, app):
     headers = sign_in(client)
     create = client.put('/api/v1/actions/1', headers=headers, json={'status': 'open', 'note': ''})

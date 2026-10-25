@@ -281,25 +281,25 @@ class Store:
 
     def action_outcomes(self):
         items = self.actions()
-        renewed = sum(item['outcome'] == 'renewed' for item in items)
-        not_renewed = sum(item['outcome'] == 'not_renewed' for item in items)
+        completed_items = [item for item in items if item['status'] == 'resolved']
+        renewed = sum(item['outcome'] == 'renewed' for item in completed_items)
+        not_renewed = sum(item['outcome'] == 'not_renewed' for item in completed_items)
         known = renewed + not_renewed
-        completed = sum(item['status'] == 'resolved' for item in items)
         contact_events = sum(len(item['contacts']) for item in items)
-        known_items = [item for item in items if item['outcome'] != 'pending']
-        renewed_items = [item for item in items if item['outcome'] == 'renewed']
+        known_items = [item for item in completed_items if item['outcome'] != 'pending']
+        renewed_items = [item for item in completed_items if item['outcome'] == 'renewed']
         def linked_due(rows):
             return float(sum((D(item['customer']['due_eur']) for item in rows if item['customer']), D(0)))
         return {'renewed': renewed, 'not_renewed': not_renewed,
-                'pending': len(items) - known, 'known_total': known,
-                'completed_count': completed, 'contact_events_count': contact_events,
+                'pending': len(completed_items) - known, 'known_total': known,
+                'completed_count': len(completed_items), 'contact_events_count': contact_events,
                 'linked_due_eur': linked_due(known_items),
                 'renewed_due_eur': linked_due(renewed_items),
                 'money_missing_customers': sum(item['customer'] is None for item in known_items),
                 'money_partial_customers': sum(bool(item['customer'] and item['customer']['money_partial']) for item in known_items),
                 'calculation_version': self.current()['calculation_version'],
                 'renewal_share_pct': round(100 * renewed / known, 1) if known else None,
-                'items': known_items}
+                'items': completed_items}
 
     def save_action(self, customer_id, status, note, outcome=None, expected_version=None,
                     assignee=None, next_contact_at=None, update_followup=False):

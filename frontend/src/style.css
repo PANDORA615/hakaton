@@ -3712,6 +3712,7 @@ body,
 .outcome-badge { border-radius: 99px; padding: 6px 10px; font-size: 11px; font-weight: 700; }
 .outcome-renewed { color: #246c54; background: #d9f4e8; }
 .outcome-not_renewed { color: #a44639; background: #fce4df; }
+.outcome-pending { color: var(--on-surface-variant); background: var(--surface-container-high); border: 1px solid var(--border); }
 .outcome-disclaimer { margin: 12px 20px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 @media (max-width: 1000px) { .outcome-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .outcome-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; } .outcome-linked-money { grid-column: 1; grid-row: 2; } .outcome-row time { grid-column: 2; grid-row: 2; text-align: right; } .action-fields { grid-template-columns: 1fr; } }
@@ -3724,6 +3725,11 @@ body,
   color: var(--muted);
   font-size: 11px;
 }
+.action-save-buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.action-save-buttons button { min-height: 42px; padding: 9px 12px; }
+.action-status-label { align-self: center; color: var(--on-surface-variant); font-size: 12px; }
+.action-status-label strong { color: var(--ink); }
+@media (max-width: 600px) { .action-save-buttons { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); } .action-save-buttons button { width: 100%; min-height: 44px; white-space: normal; } }
 .action-card-foot .primary {
   padding: 10px 18px;
 }
