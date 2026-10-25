@@ -256,7 +256,7 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
             await tariff_task
         engine.dispose()
 
-    app = FastAPI(title='Aéza Retention API', version='0.8.0-beta', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title='Aéza Retention API', version='0.9.0-beta', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
     if oidc_enabled:
         app.add_middleware(SessionMiddleware, secret_key=oidc_config['OIDC_SESSION_SECRET'],
@@ -530,6 +530,10 @@ def create_app(database_url=None, data_path=None, password=None, fixed_as_of=Non
     def summary():
         data = store.current()
         return {**version(data), **data['summary'], 'duration_seconds': data['duration_seconds'], 'recalculation_failures': store.failures}
+
+    @app.get('/api/v1/analytics/quality', dependencies=[Depends(authorized)], tags=['analytics'])
+    def quality_report():
+        return store.quality_report()
 
     @app.get('/api/v1/analytics/history', dependencies=[Depends(authorized)], tags=['analytics'])
     def history(limit: int = Query(30, ge=1, le=100)):

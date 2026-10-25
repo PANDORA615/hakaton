@@ -284,7 +284,7 @@ def test_account_settings_survive_restart(tmp_path):
 
 
 @pytest.mark.parametrize('path', ['/api/v1/auth/me', '/api/v1/customers', '/api/v1/customers/1',
-    '/api/v1/analytics/summary', '/api/v1/model/settings', '/api/v1/source/snapshot', '/api/v1/docs', '/api/v1/openapi.json', '/metrics', '/api/v1/events'])
+    '/api/v1/analytics/summary', '/api/v1/analytics/quality', '/api/v1/model/settings', '/api/v1/source/snapshot', '/api/v1/docs', '/api/v1/openapi.json', '/metrics', '/api/v1/events'])
 def test_unauthenticated_denied(client, path):
     assert client.get(path).status_code == 401
 
@@ -303,6 +303,32 @@ def test_source_contract_and_quality(source):
             if s['status'] == 'prolong_wait':
                 assert s['score'] is None
                 assert s['loss_eur'] is None
+
+
+def test_quality_report_explains_unknown_and_outcomes_use_current_due(client):
+    headers = sign_in(client)
+    report = client.get('/api/v1/analytics/quality').json()
+    summary = client.get('/api/v1/analytics/summary').json()
+    assert report['unknown_customer_count'] == summary['risk_counts']['unknown']
+    assert report['excluded_service_count'] == summary['money_unknown_services']
+    assert report['scored_customer_count'] + report['unknown_customer_count'] == report['customer_count']
+    assert report['affected_customer_count'] + report['no_renewable_count'] == report['unknown_customer_count']
+    assert all(issue['fields'] and issue['advice'] for row in report['items'] for issue in row['issues'])
+    assert any(issue['service_id'] for row in report['items'] for issue in row['issues'])
+
+    customer = next(row for row in client.get('/api/v1/customers?page_size=100').json()['items']
+                    if row['risk_level'] != 'unknown' and row['due_eur'] > 0)
+    customer_id = customer['id']
+    assert client.put(f'/api/v1/actions/{customer_id}', headers=headers,
+                      json={'status': 'resolved', 'note': 'Продлил', 'outcome': 'renewed'}).status_code == 200
+    results = client.get('/api/v1/actions/outcomes').json()
+    assert results['completed_count'] == 1
+    assert results['contact_events_count'] == 0
+    assert results['renewed_due_eur'] == customer['due_eur']
+    assert results['linked_due_eur'] == customer['due_eur']
+    assert results['calculation_version'] == summary['calculation_version']
+    assert results['money_missing_customers'] == 0
+    assert results['money_partial_customers'] == int(customer['money_partial'])
 
 
 @pytest.mark.parametrize('mutation', ['bonus','bool_money','owner','service','duplicate','performed','date','amount','blank_name'])

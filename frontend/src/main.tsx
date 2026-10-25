@@ -357,7 +357,7 @@ function LoginPage({
             Решения, основанные на данных.
           </p>
           <span className="story-footer">
-            <Activity size={17} /> Aéza Retention · beta 0.8
+            <Activity size={17} /> Aéza Retention · beta 0.9
           </span>
         </div>
       </div>
@@ -896,7 +896,7 @@ function App() {
           {view === "help" && <HelpCenter language={language} onGo={goToHelpTarget} onStartGuide={startGuide} />}
           {view === "settings" && <ModelSettings onSuccess={setToast} />}
           {view === "source" && (
-            <SourcePanel summary={summary.data} onSuccess={setToast} />
+            <SourcePanel summary={summary.data} onSuccess={setToast} onSelect={openCustomer} />
           )}
           {view === "actions" && <ActionQueue onSelect={openCustomer} onSuccess={setToast} />}
           {view === "outcomes" && <OutcomesPanel onSelect={openCustomer} />}
@@ -1861,17 +1861,23 @@ function OutcomesPanel({ onSelect }: { onSelect: (id: number) => void }) {
   const data = query.data;
   return <div className="outcomes-layout">
     <section className="outcome-kpis">
+      <article className="panel outcome-kpi"><span>Завершено кейсов</span><strong>{data.completed_count}</strong><small>Статус «Завершено» в очереди</small></article>
+      <article className="panel outcome-kpi"><span>Записано контактов</span><strong>{data.contact_events_count}</strong><small>Звонки, письма и чаты в истории</small></article>
       <article className="panel outcome-kpi"><span>Продлили после контакта</span><strong>{data.renewed}</strong><small>Отмеченный факт продления</small></article>
       <article className="panel outcome-kpi"><span>Не продлили</span><strong>{data.not_renewed}</strong><small>Отмеченный факт отказа</small></article>
       <article className="panel outcome-kpi"><span>Ожидают результата</span><strong>{data.pending}</strong><small>Записи без отмеченного итога</small></article>
       <article className="panel outcome-kpi"><span>Доля продлений</span><strong>{data.renewal_share_pct === null ? '—' : `${data.renewal_share_pct}%`}</strong><small>Среди {data.known_total} известных итогов</small></article>
+      <article className="panel outcome-kpi"><span>Платежи клиентов с известным итогом</span><strong>{money(data.linked_due_eur)}</strong><small>По текущему расчёту, не выручка</small></article>
+      <article className="panel outcome-kpi"><span>Из них с отметкой «Продлил»</span><strong>{money(data.renewed_due_eur)}</strong><small>Сценарные платежи этих клиентов</small></article>
     </section>
+    <p className="outcome-context">{`Денежные суммы взяты из расчёта #${data.calculation_version}.`}{' '}{data.money_missing_customers > 0 && `${data.money_missing_customers} клиентов отсутствуют в текущем снимке и не входят в сумму. `}{data.money_partial_customers > 0 && `У ${data.money_partial_customers} клиентов оценка платежей неполная.`}</p>
     <section className="panel outcome-history">
       <div className="panel-heading"><div><h2>Зафиксированные результаты</h2><p>Результаты вводятся вручную в разделе «Работа с клиентами».</p></div></div>
       {data.items.length === 0 ? <div className="empty"><CheckCircle2 size={28} /><h3>Результатов пока нет</h3><p>После общения с клиентом отметьте, продлил ли он услугу.</p></div> :
         <div className="outcome-list">{data.items.map((item: any) => <div className="outcome-row" key={item.id}>
           <button disabled={!item.customer} onClick={() => onSelect(item.customer_id)}>{item.customer?.email || `Клиент #${item.customer_id} · нет в текущих данных`}</button>
           <span className={`outcome-badge outcome-${item.outcome}`}>{item.outcome === 'renewed' ? 'Продлил' : 'Не продлил'}</span>
+          <span className="outcome-linked-money">{item.customer ? money(item.customer.due_eur) : 'Нет в текущем снимке'}</span>
           <time>{item.outcome_recorded_at ? `${date(item.outcome_recorded_at)} МСК` : 'Дата неизвестна'}</time>
         </div>)}</div>}
       <p className="outcome-disclaimer">Эти числа показывают отмеченные итоги. Они не доказывают, что продление произошло именно благодаря контакту.</p>
@@ -2308,10 +2314,13 @@ function AccountSettings({ data, pending, error, onSaved, onSuccess, onLogout }:
 function SourcePanel({
   summary,
   onSuccess,
+  onSelect,
 }: {
   summary: any;
   onSuccess: (s: string) => void;
+  onSelect: (id: number) => void;
 }) {
+  const quality = useQuery({ queryKey: ['data-quality'], queryFn: () => api('/analytics/quality'), refetchInterval: 5000 });
   const [file, setFile] = useState<File | null>(null),
     [pending, setPending] = useState(false),
     [error, setError] = useState(""),
@@ -2513,34 +2522,34 @@ function SourcePanel({
       <section className="panel quality-panel">
         <div className="panel-heading">
           <div>
-            <h2>Качество исходных данных</h2>
+            <h2>Диагностика качества данных</h2>
             <p>
-              Несогласованные состояния исключаются из прогноза до уточнения
+              Почему клиент остался без оценки и какие поля источника проверить
             </p>
           </div>
           <span className="subtle-tag">
-            {summary?.warnings.length ?? 0} замечаний
+            {quality.data?.unknown_customer_count ?? summary?.risk_counts?.unknown ?? '—'} без оценки
           </span>
         </div>
-        {summary?.warnings.length ? (
-          <div className="quality-list">
-            {summary.warnings.map((w: any) => (
-              <div key={w.service_id}>
-                <AlertTriangle size={16} />
-                <span>
-                  Услуга <strong>#{w.service_id}</strong> · клиент #
-                  {w.customer_id}
-                </span>
-                <p>{formatReason(w.message)}</p>
-              </div>
-            ))}
+        {quality.isError && <ErrorBox message={quality.error.message} />}
+        {quality.isPending && <Loading />}
+        {quality.data && <div className="quality-dashboard">
+          <div className="quality-stats">
+            <div><strong>{quality.data.scored_customer_count}</strong><span>с оценкой</span></div>
+            <div><strong>{quality.data.affected_customer_count}</strong><span>с противоречиями</span></div>
+            <div><strong>{quality.data.no_renewable_count}</strong><span>без продлеваемых услуг</span></div>
+            <div><strong>{quality.data.excluded_service_count}</strong><span>услуг исключено из расчёта</span></div>
           </div>
-        ) : (
-          <div className="empty">
-            <CheckCircle2 size={26} />
-            <p>Противоречий жизненного цикла не найдено</p>
-          </div>
-        )}
+          <p className="quality-version">{`Снимок #${quality.data.source_version} · расчёт #${quality.data.calculation_version}. Клиент без продлеваемых услуг может быть корректным состоянием источника.`}</p>
+          {quality.data.items.length ? <div className="quality-cases">{quality.data.items.map((item: any) => <details className="quality-case" key={item.customer_id}>
+            <summary><span className="quality-case-title"><strong>{item.email}</strong><small>{`Клиент #${item.customer_id} · ${item.category === 'inconsistent' ? 'Проверьте данные' : 'Нет продлеваемых услуг'}`}</small></span><span>{`${item.issues.length} ${item.issues.length === 1 ? 'причина' : 'причины'}`}</span></summary>
+            <div className="quality-case-body">{item.issues.map((issue: any, index: number) => <div className="quality-issue" key={`${issue.service_id ?? 'account'}-${index}`}>
+              <strong>{issue.service_id ? `Услуга #${issue.service_id}` : 'Состав услуг'}</strong>
+              <p>{formatReason(issue.message)}</p><p>{issue.advice}</p>
+              <div className="quality-fields">{issue.fields.map((field: string) => <code key={field}>{field}</code>)}</div>
+            </div>)}<button type="button" className="secondary" onClick={() => onSelect(item.customer_id)}>Открыть клиента <ArrowRight size={15} /></button></div>
+          </details>)}</div> : <div className="empty"><CheckCircle2 size={26} /><p>Все клиенты получили оценку</p></div>}
+        </div>}
       </section>
       <div className="api-links">
         <a href="/api/v1/docs" target="_blank" rel="noreferrer">

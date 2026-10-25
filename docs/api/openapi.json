@@ -3,7 +3,7 @@
   "info": {
     "title": "Aéza Retention API",
     "description": "Explainable retention index. Cookie session required; mutating authenticated requests require X-CSRF-Token. All source money fields are integer EUR cents. API fields ending _eur are EUR. Scores are indices, not calibrated probabilities.",
-    "version": "0.8.0-beta"
+    "version": "0.9.0-beta"
   },
   "paths": {
     "/api/v1/competitors/tariffs": {
@@ -560,6 +560,30 @@
         ],
         "summary": "Summary",
         "operationId": "summary_api_v1_analytics_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/analytics/quality": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Quality Report",
+        "operationId": "quality_report_api_v1_analytics_quality_get",
         "responses": {
           "200": {
             "description": "Successful Response",

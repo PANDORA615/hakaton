@@ -8,7 +8,7 @@ from sqlalchemy import select, insert, delete, update, text, func
 from sqlalchemy.exc import IntegrityError
 from . import db
 from .schemas import Snapshot, Settings, Account
-from .scoring import calculate, CALCULATION_SCHEMA_VERSION
+from .scoring import calculate, CALCULATION_SCHEMA_VERSION, D
 
 
 class Conflict(Exception):
@@ -236,15 +236,70 @@ class Store:
         return [{**dict(row), 'customer': customers.get(row['customer_id']),
                  'contacts': history.get(row['id'], [])} for row in rows]
 
+    def quality_report(self):
+        current = self.current()
+        items = []
+        for customer in current['customers']:
+            if customer['risk_level'] != 'unknown':
+                continue
+            issues = []
+            for service in customer['services']:
+                warning = service.get('quality_warning')
+                if not warning:
+                    continue
+                if warning.startswith('Дата создания'):
+                    fields = ['services.createdAt']
+                    advice = 'Сверьте дату создания услуги с источником: она должна быть не позже времени расчёта.'
+                elif warning.startswith('Ожидание оплаты началось'):
+                    fields = ['services.status', 'services.expiresAt']
+                    advice = 'Сверьте статус ожидания оплаты и срок окончания услуги: ожидание начинается после окончания.'
+                elif warning.startswith('Ожидание оплаты длится'):
+                    fields = ['services.status', 'services.expiresAt']
+                    advice = 'Уточните срок оплаты и текущий статус: ожидание свыше пяти дней противоречит правилам источника.'
+                else:
+                    fields = ['services.status', 'services.expiresAt']
+                    advice = 'Сверьте срок окончания и статус услуги: истёкшая услуга не должна оставаться действующей.'
+                issues.append({'service_id': service['id'], 'message': warning,
+                               'fields': fields, 'advice': advice})
+            if not issues and customer['eligible_count'] == 0:
+                issues.append({'service_id': None, 'message': 'Нет услуг, доступных для продления',
+                               'fields': ['services.status'],
+                               'advice': 'Проверьте состав и статусы услуг. Если продлеваемых услуг действительно нет, исправление не требуется.'})
+            items.append({'customer_id': customer['id'], 'email': customer['email'],
+                          'category': 'inconsistent' if customer['eligible_count'] else 'no_renewable',
+                          'eligible_count': customer['eligible_count'], 'scored_count': customer['scored_count'],
+                          'issues': issues})
+        return {'calculation_version': current['calculation_version'],
+                'source_version': current['source_version'],
+                'customer_count': len(current['customers']),
+                'scored_customer_count': sum(c['risk_level'] != 'unknown' for c in current['customers']),
+                'unknown_customer_count': len(items),
+                'affected_customer_count': sum(i['category'] == 'inconsistent' for i in items),
+                'no_renewable_count': sum(i['category'] == 'no_renewable' for i in items),
+                'excluded_service_count': len(current['summary']['warnings']),
+                'items': items}
+
     def action_outcomes(self):
         items = self.actions()
         renewed = sum(item['outcome'] == 'renewed' for item in items)
         not_renewed = sum(item['outcome'] == 'not_renewed' for item in items)
         known = renewed + not_renewed
+        completed = sum(item['status'] == 'resolved' for item in items)
+        contact_events = sum(len(item['contacts']) for item in items)
+        known_items = [item for item in items if item['outcome'] != 'pending']
+        renewed_items = [item for item in items if item['outcome'] == 'renewed']
+        def linked_due(rows):
+            return float(sum((D(item['customer']['due_eur']) for item in rows if item['customer']), D(0)))
         return {'renewed': renewed, 'not_renewed': not_renewed,
                 'pending': len(items) - known, 'known_total': known,
+                'completed_count': completed, 'contact_events_count': contact_events,
+                'linked_due_eur': linked_due(known_items),
+                'renewed_due_eur': linked_due(renewed_items),
+                'money_missing_customers': sum(item['customer'] is None for item in known_items),
+                'money_partial_customers': sum(bool(item['customer'] and item['customer']['money_partial']) for item in known_items),
+                'calculation_version': self.current()['calculation_version'],
                 'renewal_share_pct': round(100 * renewed / known, 1) if known else None,
-                'items': [item for item in items if item['outcome'] != 'pending']}
+                'items': known_items}
 
     def save_action(self, customer_id, status, note, outcome=None, expected_version=None,
                     assignee=None, next_contact_at=None, update_followup=False):
