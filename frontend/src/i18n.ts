@@ -172,6 +172,14 @@ const pairs: Record<string, string> = {
   'Сохранить план': 'Save plan', 'Сохранить в результаты': 'Save to outcomes',
   'Карточка перенесена в результаты': 'Card moved to outcomes',
   'План контакта сохранён': 'Follow-up plan saved', 'Статус:': 'Status:',
+  'Ответственный': 'Owner', 'Не назначен': 'Not assigned',
+  'Сохранено': 'Saved',
+  'Запланированный контакт': 'Planned contact', 'Сохранённая заметка': 'Saved note',
+  'Заметка не добавлена': 'No note added', 'Разговоры не записаны.': 'No conversations recorded.',
+  'Текущие данные клиента:': 'Current customer data:',
+  'прогнозируемых платежей': 'projected payments',
+  'Открыть профиль клиента': 'Open customer profile',
+  'Клиента нет в текущем снимке, но сохранённая карточка и история контактов доступны.': 'The customer is absent from the current snapshot, but the saved card and contact history remain available.',
   'Записано контактов': 'Recorded contacts', 'Звонки, письма и чаты в истории': 'Calls, emails and chats in history',
   'Платежи клиентов с известным итогом': 'Payments of customers with a known outcome',
   'По текущему расчёту, не выручка': 'Current projection, not revenue',
@@ -195,6 +203,8 @@ const pairs: Record<string, string> = {
 
 const reverse = new Map(Object.entries(pairs).map(([ru, en]) => [en, ru]));
 const dynamic = [
+  [/^Карточка клиента #(\d+)$/, 'Customer card #$1'],
+  [/^История контактов · (\d+)$/, 'Contact history · $1'],
   [/^Клиент #(\d+) · нет в текущих данных$/, 'Customer #$1 · not in current data'],
   [/^Показано (.+) из (\d+)$/, 'Showing $1 of $2'],
   [/^(\d+) клиентов с высоким риском$/, '$1 high-risk customers'],

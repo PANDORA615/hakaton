@@ -3704,6 +3704,29 @@ body,
 .outcome-context { margin: 0; padding: 12px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-container); color: var(--on-surface-variant); font-size: 12px; line-height: 1.5; }
 .outcome-history { padding-bottom: 18px; }
 .outcome-list { display: grid; padding: 0 20px; }
+.result-card { min-width: 0; border-top: 1px solid var(--border); }
+.result-card-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 18px; align-items: center; gap: 14px; min-height: 66px; padding: 12px 0; cursor: pointer; color: var(--ink); list-style: none; }
+.result-card-summary::-webkit-details-marker { display: none; }
+.result-card-summary:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; border-radius: 7px; }
+.result-card-person { display: grid; min-width: 0; gap: 4px; }
+.result-card-person strong { overflow-wrap: anywhere; font-size: 12px; }
+.result-card-person small, .result-card-summary time { color: var(--muted); font-size: 11px; }
+.result-card-chevron { color: var(--muted); transition: transform 180ms ease; }
+.result-card[open] .result-card-chevron { transform: rotate(180deg); }
+.result-card-body { display: grid; gap: 16px; padding: 16px; margin: 0 0 16px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface-container); }
+.result-card-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.result-card-facts > div { display: grid; gap: 5px; min-width: 0; }
+.result-card-facts span, .result-card-current > span { color: var(--on-surface-variant); font-size: 11px; }
+.result-card-facts strong { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.result-card-note, .result-card-contacts, .result-card-current { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--border); }
+.result-card-note > strong, .result-card-contacts > strong { color: var(--ink); font-size: 12px; }
+.result-card-note p, .result-card-contacts p, .result-card-missing { margin: 0; color: var(--on-surface-variant); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.result-card-contacts ol { display: grid; gap: 10px; margin: 0; padding-left: 20px; }
+.result-card-contacts li > span { color: var(--muted); font-size: 11px; }
+.result-card-current strong { color: var(--ink); font-size: 12px; }
+.result-card-current button { justify-self: start; min-height: 42px; }
+@media (max-width: 600px) { .outcome-list { padding: 0 14px; } .result-card-summary { grid-template-columns: minmax(0, 1fr) 18px; gap: 8px; } .result-card-person { grid-column: 1; } .result-card-summary .outcome-badge { grid-column: 1; justify-self: start; } .result-card-summary time { grid-column: 1; } .result-card-chevron { grid-column: 2; grid-row: 1 / 4; } .result-card-facts { grid-template-columns: minmax(0, 1fr); } .result-card-current button { width: 100%; justify-content: center; min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .result-card-chevron { transition: none; } }
 .outcome-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--border); }
 .outcome-linked-money { color: var(--on-surface-variant); font-size: 11px; white-space: nowrap; }
 .outcome-row button { width: fit-content; color: var(--ink); background: transparent; font-weight: 700; text-align: left; }

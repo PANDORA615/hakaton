@@ -1874,15 +1874,36 @@ function OutcomesPanel({ onSelect }: { onSelect: (id: number) => void }) {
     <section className="panel outcome-history">
       <div className="panel-heading"><div><h2>Зафиксированные результаты</h2><p>Сохранённые карточки автоматически переходят сюда из «Работы с клиентами».</p></div></div>
       {data.items.length === 0 ? <div className="empty"><CheckCircle2 size={28} /><h3>Результатов пока нет</h3><p>Завершите карточку в разделе «Работа с клиентами».</p></div> :
-        <div className="outcome-list">{data.items.map((item: any) => <div className="outcome-row" key={item.id}>
-          <button disabled={!item.customer} onClick={() => onSelect(item.customer_id)}>{item.customer?.email || `Клиент #${item.customer_id} · нет в текущих данных`}</button>
-          <span className={`outcome-badge outcome-${item.outcome}`}>{item.outcome === 'renewed' ? 'Продлил' : item.outcome === 'not_renewed' ? 'Не продлил' : 'Итог не указан'}</span>
-          <span className="outcome-linked-money">{item.customer ? money(item.customer.due_eur) : 'Нет в текущем снимке'}</span>
-          <time>{`${date(item.outcome_recorded_at || item.updated_at)} МСК`}</time>
-        </div>)}</div>}
+        <div className="outcome-list">{data.items.map((item: any) => <ResultCard key={item.id} item={item} onSelect={onSelect} />)}</div>}
       <p className="outcome-disclaimer">Завершённые карточки и отмеченные итоги не доказывают, что продление произошло именно благодаря контакту.</p>
     </section>
   </div>;
+}
+
+function ResultCard({ item, onSelect }: { item: any; onSelect: (id: number) => void }) {
+  const outcomeLabel = item.outcome === 'renewed' ? 'Продлил' : item.outcome === 'not_renewed' ? 'Не продлил' : 'Итог не указан';
+  return <details className="result-card">
+    <summary className="result-card-summary">
+      <span className="result-card-person"><strong>{item.customer?.email || `Клиент #${item.customer_id} · нет в текущих данных`}</strong><small>{`Карточка клиента #${item.customer_id}`}</small></span>
+      <span className={`outcome-badge outcome-${item.outcome}`}>{outcomeLabel}</span>
+      <time>{`${date(item.updated_at)} МСК`}</time>
+      <ChevronDown size={17} className="result-card-chevron" aria-hidden="true" />
+    </summary>
+    <div className="result-card-body">
+      <div className="result-card-facts">
+        <div><span>Ответственный</span><strong>{item.assignee || 'Не назначен'}</strong></div>
+        <div><span>Итог продления</span><strong>{outcomeLabel}</strong></div>
+        <div><span>Сохранено</span><strong>{`${date(item.updated_at)} МСК`}</strong></div>
+        {item.next_contact_at && <div><span>Запланированный контакт</span><strong>{`${date(item.next_contact_at)} МСК`}</strong></div>}
+      </div>
+      <div className="result-card-note"><strong>Сохранённая заметка</strong><p>{item.note || 'Заметка не добавлена'}</p></div>
+      <div className="result-card-contacts"><strong>{`История контактов · ${item.contacts?.length ?? 0}`}</strong>
+        {item.contacts?.length ? <ol>{item.contacts.map((contact: any) => <li key={contact.id}><span>{contact.channel === 'call' ? 'Звонок' : contact.channel === 'email' ? 'Письмо' : contact.channel === 'chat' ? 'Чат' : 'Другое'} · {date(contact.contacted_at)} МСК</span><p>{contact.note}</p></li>)}</ol> : <p>Разговоры не записаны.</p>}
+      </div>
+      {item.customer && <div className="result-card-current"><span>Текущие данные клиента: {formatReason(item.customer.reason)}</span><strong>{money(item.customer.due_eur)} прогнозируемых платежей</strong><button type="button" className="secondary" onClick={() => onSelect(item.customer_id)}>Открыть профиль клиента <ArrowRight size={15} /></button></div>}
+      {!item.customer && <p className="result-card-missing">Клиента нет в текущем снимке, но сохранённая карточка и история контактов доступны.</p>}
+    </div>
+  </details>;
 }
 
 function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; onSuccess: (message: string) => void }) {
