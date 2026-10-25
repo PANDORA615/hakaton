@@ -1,10 +1,12 @@
 """Official VPS price snapshots. Never infer attributes absent from source pages."""
 import html
+import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
-import json
+from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy import select, insert, update
@@ -17,6 +19,9 @@ SOURCES = {
     'aeza': ('Aéza', 'https://aeza.ru/virtual-servers'),
     'firstvds': ('FirstVDS', 'https://firstvds.ru/docs/tariffs.html'),
     'ruvds': ('RUVDS', 'https://ruvds.com/ru/vps_start/'),
+    'selectel': ('Selectel', 'https://selectel.ru/services/cloud/vps-vds/daily-paid/'),
+    'adminvps': ('AdminVPS', 'https://adminvps.ru/vps/vps_linux.php'),
+    'beget': ('Beget', 'https://beget.com/ru/vps'),
 }
 
 
@@ -93,7 +98,104 @@ def parse_ruvds(page):
                           disk_type=disk_type, cpu_class=None, billing='month', location=None))
     return plans
 
-PARSERS = {'aeza': parse_aeza, 'firstvds': parse_firstvds, 'ruvds': parse_ruvds}
+def parse_selectel(page):
+    plans = []
+    traffic = re.search(r'(\d+)\s*ТБ внешнего трафика', plain(page))
+    traffic_tb = int(traffic.group(1)) if traffic else None
+    cards = re.findall(r'<div class="tariff-card"(.*?)(?=<div class="tariff-card"|\Z)', page, re.S)
+    for card in cards:
+        name = re.search(r'<h4\b[^>]*>(VDS \d+-\d+-\d+)</h4>', card)
+        if not name:
+            continue
+        rows = {plain(k): plain(v) for k, v in re.findall(r'<td\b[^>]*>(.*?)</td>\s*<td\b[^>]*>(.*?)</td>', card, re.S)}
+        daily = re.search(r'<b class="tariff-card__bold"[^>]*>([\d,]+)</b>\s*₽/день', card)
+        if not daily or not all(k in rows for k in ('vCPU', 'RAM', 'Диск')):
+            raise ValueError(f'Incomplete Selectel plan {name.group(1)}')
+        daily_rub = Decimal(daily.group(1).replace(',', '.'))
+        plans.append(dict(id='selectel-'+name.group(1).lower().replace(' ', '-'), name=name.group(1),
+                          price_rub=float(daily_rub * 30), native_price_rub=float(daily_rub),
+                          cpu=int(rows['vCPU']), ram_gb=int(re.search(r'\d+', rows['RAM']).group()),
+                          disk_gb=int(re.search(r'\d+', rows['Диск']).group()), disk_type='NVMe',
+                          cpu_class=None, billing='daily_30_day_equivalent', location=None,
+                          ipv4_extra_rub=0, traffic_tb=traffic_tb))
+    expected = len(re.findall(r'<h4\b[^>]*>VDS \d+-\d+-\d+</h4>', page))
+    if not plans or len(plans) != expected:
+        raise ValueError('Selectel daily VDS plan list is incomplete')
+    return plans
+
+
+def parse_adminvps(page):
+    plans = []
+    for table in re.findall(r'<table\b[^>]*>(.*?)</table>', page, re.S):
+        rows = [[plain(cell) for cell in re.findall(r'<t[dh]\b[^>]*>(.*?)</t[dh]>', row, re.S)]
+                for row in re.findall(r'<tr\b[^>]*>(.*?)</tr>', table, re.S)]
+        if not rows or '1 мес.' not in rows[0] or not {'CPU', 'RAM', 'NVMe'}.issubset(rows[0]):
+            continue
+        header = rows[0]
+        indexes = {key: header.index(key) for key in ('Тариф', 'CPU', 'RAM', 'NVMe', '1 мес.')}
+        family = ('Windows' if len(rows) > 1 and rows[1][0].startswith('WIN') else
+                  'Linux 5.0' if len(rows) > 1 and '5,0' in rows[1][header.index('CPU')] else 'Linux 3.6')
+        for row in rows[1:]:
+            if len(row) <= max(indexes.values()):
+                raise ValueError('Incomplete AdminVPS tariff row')
+            name = row[indexes['Тариф']]
+            price_text = row[indexes['1 мес.']]
+            if not name or not re.search(r'\d', price_text):
+                raise ValueError('AdminVPS one-month price missing')
+            plans.append(dict(id=f'adminvps-{family.lower().replace(" ", "-")}-{name.lower()}', name=f'{family} · {name}',
+                              price_rub=int(re.sub(r'\D', '', price_text)),
+                              cpu=int(re.search(r'\d+', row[indexes['CPU']]).group()),
+                              ram_gb=int(re.search(r'\d+', row[indexes['RAM']]).group()),
+                              disk_gb=int(re.search(r'\d+', row[indexes['NVMe']]).group()),
+                              disk_type='NVMe', cpu_class=None, billing='month', location=None,
+                              os_family='Windows' if family == 'Windows' else 'Linux'))
+    if not plans:
+        raise ValueError('AdminVPS fixed Linux/Windows plans not found')
+    return plans
+
+
+def parse_beget(page, fetch):
+    match = re.search(r'href="(https://assets-site\.beget\.com/ru/vps/_payload\.json[^\"]*)"', page)
+    if not match:
+        raise ValueError('Beget first-party tariff payload not found')
+    payload_url = html.unescape(match.group(1))
+    parsed = urlsplit(payload_url)
+    if parsed.scheme != 'https' or parsed.netloc != 'assets-site.beget.com' or parsed.path != '/ru/vps/_payload.json':
+        raise ValueError('Unexpected Beget tariff payload URL')
+    data = json.loads(fetch(payload_url))
+    root = next((obj for obj in data if isinstance(obj, dict) and 'vpsPlanList' in obj and 'vpsPublicIpInfo' in obj), None)
+    if root is None:
+        raise ValueError('Beget VPS catalog missing')
+    plan_ref = data[root['vpsPlanList']]
+    if not isinstance(plan_ref, list) or len(plan_ref) < 2:
+        raise ValueError('Invalid Beget plan list')
+    plan_ids = data[plan_ref[1]]
+    ip_by_region = data[data[root['vpsPublicIpInfo']]['pricing']]
+    plans = []
+    for index in plan_ids:
+        item = data[index]
+        slug, name, region = (data[item[key]] for key in ('name', 'display_name', 'region'))
+        specs = data[item['specs']]
+        prices = data[data[item['prices']]['no_discount']]
+        ip_pricing = data[ip_by_region[region]]
+        plans.append(dict(id='beget-'+slug, name=f'{name} · {region.upper()}',
+                          price_rub=int(data[prices['month_amount']]),
+                          cpu=int(data[specs['cpu_cores']]),
+                          ram_gb=data[specs['memory_size']] / 1024,
+                          disk_gb=data[specs['disk_size']] / 1024,
+                          disk_type='NVMe', cpu_class=None, billing='month', location=region.upper(),
+                          ipv4_extra_rub=int(data[ip_pricing['price_ipv4_per_month']])))
+    if not plans:
+        raise ValueError('Beget catalog did not provide fixed VPS plans')
+    return plans
+
+
+PARSERS = {'aeza': parse_aeza, 'firstvds': parse_firstvds, 'ruvds': parse_ruvds,
+           'selectel': parse_selectel, 'adminvps': parse_adminvps}
+VERIFIED_BOOTSTRAPS = {
+    'aeza': ('aeza_verified_2026-10-24.json', '2026-10-24T00:00:00+00:00'),
+    'selectel': ('selectel_verified_2026-10-25.json', '2026-10-25T00:07:00+00:00'),
+}
 
 
 class TariffCatalog:
@@ -128,7 +230,8 @@ class TariffCatalog:
             if last_attempt and now - last_attempt < (REFRESH_INTERVAL if last_success and last_attempt == last_success else timedelta(hours=1)):
                 continue
             try:
-                plans = PARSERS[provider](self.fetch(url))
+                page = self.fetch(url)
+                plans = parse_beget(page, self.fetch) if provider == 'beget' else PARSERS[provider](page)
                 if not plans or any(p['price_rub'] <= 0 for p in plans):
                     raise ValueError('No valid monthly tariff prices found')
                 payload = {'plans': plans, 'fetched_at': now.isoformat(), 'attempted_at': now.isoformat(), 'error': None}
@@ -136,10 +239,11 @@ class TariffCatalog:
                 logger.warning('Tariff refresh failed for %s: %s', provider, exc)
                 payload = {'attempted_at': now.isoformat(), 'error': 'Источник временно недоступен или изменил формат'}
                 if not row:
-                    if provider == 'aeza':
-                        # Verified from the official page on 2026-10-24; temporary bootstrap only.
-                        payload.update(plans=json.loads((Path(__file__).with_name('aeza_verified_2026-10-24.json')).read_text()),
-                                       fetched_at='2026-10-24T00:00:00+00:00')
+                    if provider in VERIFIED_BOOTSTRAPS:
+                        # Dated, official-page snapshot; retry hourly until replaced by a live fetch.
+                        filename, verified_at = VERIFIED_BOOTSTRAPS[provider]
+                        payload.update(plans=json.loads((Path(__file__).with_name(filename)).read_text()),
+                                       fetched_at=verified_at)
                     else:
                         payload.update(plans=[], fetched_at=None)
             with self.engine.begin() as conn:

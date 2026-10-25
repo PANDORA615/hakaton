@@ -33,3 +33,15 @@ def test_refresh_retains_last_good_snapshot_and_marks_stale():
     assert after['plans'] == first['plans']
     assert after['stale'] and after['error'] and after['fetched_at'] == old
     engine.dispose()
+
+
+def test_selectel_official_snapshot_is_labeled_when_live_source_fails():
+    engine = db.make_engine('sqlite:///:memory:')
+    db.metadata.create_all(engine)
+    catalog = TariffCatalog(engine, fetch=lambda _: (_ for _ in ()).throw(TimeoutError('source offline')))
+    catalog.refresh_due()
+    selectel = next(p for p in catalog.catalog()['providers'] if p['id'] == 'selectel')
+    assert len(selectel['plans']) == 7
+    assert selectel['error']
+    assert selectel['fetched_at'].startswith('2026-10-25')
+    engine.dispose()
