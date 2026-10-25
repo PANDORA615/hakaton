@@ -1904,17 +1904,26 @@ function ActionQueue({ onSelect, onSuccess }: { onSelect: (id: number) => void; 
   const filters = [
     ['all', 'Все'], ['due', 'Напоминания'], ['open', 'В работе'], ['contacted', 'Связались'], ['resolved', 'Завершено'],
   ];
+  function keepSavedCardVisible(saved: any) {
+    const stillMatches = filter === 'all' || (filter === 'due' ? due(saved) : saved.status === filter);
+    if (!stillMatches) setFilter('all');
+    queryClient.setQueryData(["actions"], (current: any) => current ? {
+      ...current,
+      items: current.items.map((item: any) => item.customer_id === saved.customer_id ? saved : item),
+    } : current);
+    queryClient.invalidateQueries({ queryKey: ["actions"] });
+  }
   return <section className="panel action-panel">
-    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Назначайте ответственного, планируйте следующий звонок и фиксируйте каждый разговор.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
+    <div className="panel-heading"><div><h2>Очередь контактов</h2><p>Назначайте ответственного, планируйте следующий звонок и фиксируйте каждый разговор. Завершённые записи остаются в списке.</p></div><span className="subtle-tag">{activeCount} активных</span></div>
     {dueCount > 0 && <div className="action-reminder" role="status">Пора связаться с {dueCount} клиентами. Откройте «Напоминания».</div>}
     <div className="action-filters" aria-label="Фильтр контактов">{filters.map(([key, label]) => <button key={key} type="button" className={filter === key ? 'selected' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label} <span>{key === 'all' ? items.length : key === 'due' ? dueCount : items.filter((item) => item.status === key).length}</span></button>)}</div>
     {items.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Очередь пуста</h3><p>Откройте клиента и нажмите «Добавить в работу».</p></div>}
     {items.length > 0 && visible.length === 0 && <div className="empty"><ClipboardList size={28} /><h3>Нет записей с таким статусом</h3></div>}
-    <div className="action-list">{visible.map((action: any) => <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={() => queryClient.invalidateQueries({ queryKey: ["actions"] })} />)}</div>
+    <div className="action-list">{visible.map((action: any) => <ActionCard key={action.id} action={action} onSelect={onSelect} onSuccess={onSuccess} onSaved={keepSavedCardVisible} />)}</div>
   </section>;
 }
 
-function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onSelect: (id: number) => void; onSuccess: (message: string) => void; onSaved: () => void }) {
+function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onSelect: (id: number) => void; onSuccess: (message: string) => void; onSaved: (saved: any) => void }) {
   const asLocal = (value: string | null) => value ? new Date(value).toLocaleString('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(' ', 'T') : '';
   const [status, setStatus] = useState(action.status);
   const [note, setNote] = useState(action.note);
@@ -1964,7 +1973,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       setBaseVersion(saved.version);
       setDirty(false);
       setConflict(null);
-      onSaved();
+      onSaved(saved);
       await queryClient.invalidateQueries({ queryKey: ['action-outcomes'] });
       onSuccess("Результат работы сохранён");
     } catch (cause) {
@@ -1982,7 +1991,7 @@ function ActionCard({ action, onSelect, onSuccess, onSaved }: { action: any; onS
       const saved = await api(`/actions/${action.customer_id}/contacts`, { method: 'POST', body: JSON.stringify({ channel, note: contactNote.trim(), next_contact_at: nextContact ? new Date(nextContact).toISOString() : null, expected_version: baseVersion }) });
       setBaseVersion(saved.version);
       setContactNote('');
-      onSaved();
+      onSaved(saved);
       onSuccess('Контакт добавлен в историю');
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) setConflict(cause.detail?.current ?? action);

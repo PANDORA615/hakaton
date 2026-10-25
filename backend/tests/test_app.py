@@ -509,6 +509,10 @@ def test_marketing_actions(client, app, source):
     assert client.get('/api/v1/actions').json()['items'][0]['note'] == 'Связались'
     renewed = client.put('/api/v1/actions/1', headers=headers, json={'status': 'resolved', 'note': 'Продлил', 'outcome': 'renewed', 'expected_version': 2})
     assert renewed.status_code == 200
+    queued_after_result = client.get('/api/v1/actions').json()['items']
+    assert any(item['customer_id'] == 1 and item['status'] == 'resolved' and item['outcome'] == 'renewed'
+               for item in queued_after_result)
+    assert any(item['customer_id'] == 1 for item in client.get('/api/v1/actions/outcomes').json()['items'])
     recorded_at = renewed.json()['outcome_recorded_at']
     assert recorded_at
     assert client.put('/api/v1/actions/2', headers=headers, json={'status': 'resolved', 'note': 'Отказ', 'outcome': 'not_renewed'}).status_code == 200

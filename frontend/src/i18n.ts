@@ -89,6 +89,7 @@ const pairs: Record<string, string> = {
   'Результатов пока нет': 'No outcomes yet', 'После общения с клиентом отметьте, продлил ли он услугу.': 'Record whether the customer renewed after outreach.',
   'Эти числа показывают отмеченные итоги. Они не доказывают, что продление произошло именно благодаря контакту.': 'These figures show recorded outcomes. They do not prove that outreach caused renewal.',
   'Очередь контактов': 'Outreach queue', 'Добавляйте клиентов из карточки, фиксируйте результат общения.': 'Add customers from their profiles and record the outcome.',
+  'Назначайте ответственного, планируйте следующий звонок и фиксируйте каждый разговор. Завершённые записи остаются в списке.': 'Assign an owner, plan the next call and record every conversation. Completed records stay in the queue.',
   'Записи без отмеченного итога': 'Records without an outcome',
   'Источник данных': 'Data source', 'Импорт снимка данных': 'Import data snapshot',
   'Полная замена аккаунтов, услуг и транзакций': 'Replace all accounts, services and transactions',
